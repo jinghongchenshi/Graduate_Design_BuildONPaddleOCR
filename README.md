@@ -1,0 +1,2 @@
+# Graduate_Design_BuildONPaddleOCR
+毕设，基于PaddleOCR的中文识别系统设计与实现

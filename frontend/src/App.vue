@@ -1,5 +1,14 @@
 <template>
   <div class="page">
+    <!-- 加载遮罩 -->
+    <div v-if="loading" class="loading-mask">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <div class="loading-title">正在识别，请稍候...</div>
+        <div class="loading-desc">系统正在调用 OCR 模型处理图片</div>
+      </div>
+    </div>
+
     <header class="hero">
       <div>
         <h1>教材 OCR 识别系统</h1>
@@ -32,24 +41,24 @@
     </section>
 
     <section class="toolbar">
-      <label class="file-btn">
+      <label class="file-btn" :class="{ disabled: loading }">
         选择图片
-        <input type="file" accept="image/*" @change="handleFileChange" />
+        <input type="file" accept="image/*" @change="handleFileChange" :disabled="loading" />
       </label>
 
       <button class="primary" @click="startOCR" :disabled="!file || loading">
         {{ loading ? "识别中..." : "开始识别" }}
       </button>
 
-      <button class="secondary" @click="copyMergedText" :disabled="!texts.length">
+      <button class="secondary" @click="copyMergedText" :disabled="!texts.length || loading">
         复制文本
       </button>
 
-      <button class="secondary" @click="exportTxt" :disabled="!texts.length">
+      <button class="secondary" @click="exportTxt" :disabled="!texts.length || loading">
         导出 TXT
       </button>
 
-      <button class="danger" @click="clearAll">
+      <button class="danger" @click="clearAll" :disabled="loading">
         清空
       </button>
     </section>
@@ -245,6 +254,54 @@ function exportTxt() {
   color: #1f2329;
   background: #f5f7fb;
   min-height: 100vh;
+  position: relative;
+}
+
+.loading-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-card {
+  width: 320px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 28px 24px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+  text-align: center;
+}
+
+.spinner {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 18px;
+  border: 5px solid #dbeafe;
+  border-top-color: #1677ff;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+}
+
+.loading-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1677ff;
+  margin-bottom: 8px;
+}
+
+.loading-desc {
+  color: #666;
+  font-size: 14px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .hero {
@@ -329,6 +386,11 @@ function exportTxt() {
   border: 1px solid #d9d9d9;
   cursor: pointer;
   min-width: 110px;
+}
+
+.file-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .file-btn input {

@@ -1,6 +1,5 @@
 <template>
   <div class="page">
-    <!-- 加载遮罩 -->
     <div v-if="loading" class="loading-mask">
       <div class="loading-card">
         <div class="spinner"></div>
@@ -35,8 +34,8 @@
         <div class="card-value">{{ elapsedText }}</div>
       </div>
       <div class="card small">
-        <div class="card-title">当前模型</div>
-        <div class="card-value">det_final_infer + rec_round6_infer</div>
+        <div class="card-title">当前状态</div>
+        <div class="card-value">{{ statusText }}</div>
       </div>
     </section>
 
@@ -87,6 +86,51 @@
       </div>
     </section>
 
+    <section class="stats-grid">
+      <div class="card">
+        <div class="card-title">平均置信度</div>
+        <div class="card-value">{{ avgScoreText }}</div>
+      </div>
+      <div class="card">
+        <div class="card-title">最高置信度</div>
+        <div class="card-value">{{ maxScoreText }}</div>
+      </div>
+      <div class="card">
+        <div class="card-title">低置信度行数</div>
+        <div class="card-value">{{ lowScoreCount }}</div>
+      </div>
+      <div class="card">
+        <div class="card-title">当前模型</div>
+        <div class="card-value">det_final_infer + rec_round6_infer</div>
+      </div>
+    </section>
+
+    <section class="notice-panel">
+      <div class="panel-header">
+        <h2>识别提示</h2>
+      </div>
+
+      <div v-if="!file" class="notice neutral">
+        请先选择图片，然后点击“开始识别”。
+      </div>
+
+      <div v-else-if="file && !texts.length && !loading" class="notice neutral">
+        当前已选择图片，但尚未执行识别。
+      </div>
+
+      <div v-else-if="texts.length === 0 && !loading" class="notice warning">
+        未检测到有效文本，可能是图片中文字较少、清晰度不足，或当前模型对该场景适应性较弱。
+      </div>
+
+      <div v-else-if="avgScore < 0.6" class="notice warning">
+        当前识别结果整体置信度较低，建议更换更清晰的图片，或继续优化模型。
+      </div>
+
+      <div v-else class="notice success">
+        当前识别流程运行正常，已成功返回文本结果。
+      </div>
+    </section>
+
     <section class="result-panel">
       <div class="panel-header">
         <h2>识别结果</h2>
@@ -103,6 +147,7 @@
             <th style="width: 80px;">序号</th>
             <th>文本</th>
             <th style="width: 120px;">置信度</th>
+            <th style="width: 120px;">质量判断</th>
           </tr>
         </thead>
         <tbody>
@@ -110,11 +155,31 @@
             <td>{{ index + 1 }}</td>
             <td>{{ item.text }}</td>
             <td>{{ Number(item.score).toFixed(4) }}</td>
+            <td>
+              <span
+                class="score-badge"
+                :class="getScoreClass(item.score)"
+              >
+                {{ getScoreLabel(item.score) }}
+              </span>
+            </td>
           </tr>
         </tbody>
       </table>
 
       <div v-else class="placeholder result-placeholder">暂无识别结果</div>
+    </section>
+
+    <section class="model-panel">
+      <div class="panel-header">
+        <h2>模型说明</h2>
+      </div>
+      <div class="model-desc">
+        <p><strong>检测模型：</strong>PP-OCRv5_mobile_det 微调版</p>
+        <p><strong>识别模型：</strong>PP-OCRv5_mobile_rec 微调版</p>
+        <p><strong>部署方式：</strong>FastAPI + Vue 前后端分离</p>
+        <p><strong>适用场景：</strong>教材页面、截图文字、单行文字、表格类文本的检测与识别演示</p>
+      </div>
     </section>
 
     <section class="log-panel">
@@ -125,6 +190,15 @@
         <div v-for="(item, index) in logs" :key="index" class="log-item">
           {{ item }}
         </div>
+      </div>
+    </section>
+
+    <section class="footer-panel">
+      <div class="panel-header">
+        <h2>系统说明</h2>
+      </div>
+      <div class="footer-desc">
+        本系统用于演示教材场景下的 OCR 文本检测与识别流程。用户可上传图片，系统将调用后端模型完成检测与识别，并返回可视化结果与文本内容。
       </div>
     </section>
   </div>
@@ -152,6 +226,34 @@ const mergedText = computed(() => {
 const elapsedText = computed(() => {
   if (!elapsedMs.value) return "-";
   return `${(elapsedMs.value / 1000).toFixed(2)} 秒`;
+});
+
+const statusText = computed(() => {
+  if (loading.value) return "识别中";
+  if (!file.value) return "待上传";
+  if (file.value && !texts.value.length) return "待识别";
+  return "已完成";
+});
+
+const avgScore = computed(() => {
+  if (!texts.value.length) return 0;
+  const total = texts.value.reduce((sum, item) => sum + Number(item.score || 0), 0);
+  return total / texts.value.length;
+});
+
+const avgScoreText = computed(() => {
+  if (!texts.value.length) return "-";
+  return avgScore.value.toFixed(4);
+});
+
+const maxScoreText = computed(() => {
+  if (!texts.value.length) return "-";
+  const max = Math.max(...texts.value.map(item => Number(item.score || 0)));
+  return max.toFixed(4);
+});
+
+const lowScoreCount = computed(() => {
+  return texts.value.filter(item => Number(item.score || 0) < 0.6).length;
 });
 
 function addLog(message) {
@@ -204,6 +306,12 @@ async function startOCR() {
 
     addLog(`识别完成，共识别出 ${texts.value.length} 行文本。`);
     addLog(`识别耗时：${(elapsedMs.value / 1000).toFixed(2)} 秒。`);
+
+    if (texts.value.length === 0) {
+      addLog("未检测到有效文本。");
+    } else if (avgScore.value < 0.6) {
+      addLog("当前识别结果整体置信度较低。");
+    }
   } catch (error) {
     console.error(error);
     addLog("识别失败，请检查后端是否启动，或查看后端报错信息。");
@@ -238,6 +346,20 @@ function exportTxt() {
 
   URL.revokeObjectURL(url);
   addLog("已导出 TXT 结果文件。");
+}
+
+function getScoreLabel(score) {
+  const s = Number(score || 0);
+  if (s >= 0.9) return "高";
+  if (s >= 0.6) return "中";
+  return "低";
+}
+
+function getScoreClass(score) {
+  const s = Number(score || 0);
+  if (s >= 0.9) return "high";
+  if (s >= 0.6) return "mid";
+  return "low";
 }
 </script>
 
@@ -340,7 +462,8 @@ function exportTxt() {
   font-size: 13px;
 }
 
-.info-cards {
+.info-cards,
+.stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 16px;
@@ -439,11 +562,15 @@ button:disabled {
 
 .panel,
 .result-panel,
-.log-panel {
+.log-panel,
+.notice-panel,
+.model-panel,
+.footer-panel {
   background: #fff;
   border-radius: 16px;
   padding: 18px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
 }
 
 .panel-header {
@@ -479,6 +606,30 @@ button:disabled {
   color: #8a94a6;
   padding: 20px;
   text-align: center;
+}
+
+.notice {
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.notice.neutral {
+  background: #f6f8fb;
+  color: #4b5563;
+}
+
+.notice.warning {
+  background: #fff7e6;
+  color: #ad6800;
+  border: 1px solid #ffd591;
+}
+
+.notice.success {
+  background: #f6ffed;
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
 }
 
 .merged-box {
@@ -525,6 +676,36 @@ th {
   background: #f7faff;
 }
 
+.score-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.score-badge.high {
+  background: #f6ffed;
+  color: #389e0d;
+}
+
+.score-badge.mid {
+  background: #fff7e6;
+  color: #d48806;
+}
+
+.score-badge.low {
+  background: #fff1f0;
+  color: #cf1322;
+}
+
+.model-desc p,
+.footer-desc {
+  margin: 8px 0;
+  line-height: 1.8;
+  color: #444;
+}
+
 .log-box {
   min-height: 120px;
   max-height: 260px;
@@ -547,7 +728,8 @@ th {
 
 @media (max-width: 960px) {
   .content,
-  .info-cards {
+  .info-cards,
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 

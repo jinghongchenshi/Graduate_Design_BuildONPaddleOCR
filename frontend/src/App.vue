@@ -37,7 +37,17 @@
     </header>
 
     <!-- 顶部紧凑操作栏 -->
-    <section class="top-bar glass">
+    <div ref="topBarAnchorRef" class="top-bar-anchor"></div>
+    <div
+      v-if="isTopBarPinned"
+      class="top-bar-placeholder"
+      :style="{ height: `${topBarHeight}px` }"
+    ></div>
+    <section
+      ref="topBarRef"
+      class="top-bar glass"
+      :class="{ pinned: isTopBarPinned, compact: isTopBarPinned }"
+    >
       <div class="left-actions">
         <label
           for="ocr-file-input"
@@ -406,6 +416,11 @@ const confidenceThreshold = ref(0.3);
 const activeTab = ref("result");
 
 const fileInputRef = ref(null);
+const topBarRef = ref(null);
+const topBarAnchorRef = ref(null);
+const isTopBarPinned = ref(false);
+const topBarHeight = ref(0);
+const topBarPinStart = ref(0);
 
 const srcShellRef = ref(null);
 const visShellRef = ref(null);
@@ -901,21 +916,48 @@ function getOverlayStyle(box) {
   };
 }
 
+function updateTopBarMetrics() {
+  const anchor = topBarAnchorRef.value;
+  const bar = topBarRef.value;
+  if (!anchor || !bar) return;
+
+  const anchorRect = anchor.getBoundingClientRect();
+  topBarPinStart.value = window.scrollY + anchorRect.top;
+  topBarHeight.value = bar.offsetHeight;
+}
+
+function updateTopBarPin() {
+  if (!topBarRef.value) return;
+  const threshold = Math.max(topBarPinStart.value - 10, 0);
+  isTopBarPinned.value = window.scrollY > threshold;
+}
+
 function handleResize() {
   fitToShell("src");
   fitToShell("vis");
+  nextTick(() => {
+    updateTopBarMetrics();
+    updateTopBarPin();
+  });
 }
 
 onMounted(() => {
   window.addEventListener("paste", handlePaste);
   window.addEventListener("resize", handleResize);
+  window.addEventListener("scroll", updateTopBarPin, { passive: true });
   window.addEventListener("mousemove", handlePanMove);
   window.addEventListener("mouseup", endPan);
+
+  nextTick(() => {
+    updateTopBarMetrics();
+    updateTopBarPin();
+  });
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("paste", handlePaste);
   window.removeEventListener("resize", handleResize);
+  window.removeEventListener("scroll", updateTopBarPin);
   window.removeEventListener("mousemove", handlePanMove);
   window.removeEventListener("mouseup", endPan);
 
@@ -938,7 +980,7 @@ onBeforeUnmount(() => {
   margin: 0 auto;
   color: #14213d;
   font-family: "Microsoft YaHei", Arial, sans-serif;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .bg {
@@ -1028,7 +1070,7 @@ onBeforeUnmount(() => {
   height: 10px;
   background: rgba(148, 163, 184, 0.18);
   border-radius: 999px;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .inline-progress {
@@ -1060,6 +1102,7 @@ onBeforeUnmount(() => {
   margin-bottom: 14px;
   padding: 18px 22px;
   border-radius: 22px;
+  z-index: 1;
 }
 
 .hero h1 {
@@ -1089,6 +1132,11 @@ onBeforeUnmount(() => {
   box-shadow: 0 8px 20px rgba(37, 99, 235, 0.2);
 }
 
+.top-bar-anchor {
+  width: 100%;
+  height: 1px;
+}
+
 .top-bar {
   display: grid;
   grid-template-columns: 1fr 280px;
@@ -1097,6 +1145,82 @@ onBeforeUnmount(() => {
   padding: 12px 14px;
   border-radius: 18px;
   margin-bottom: 14px;
+  width: 100%;
+  box-shadow: 0 12px 28px rgba(31, 38, 135, 0.16);
+  transition: padding 0.22s ease, border-radius 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
+  will-change: transform, opacity;
+}
+
+.top-bar.pinned {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(1380px, calc(100vw - 36px));
+  z-index: 999;
+  box-shadow: 0 18px 38px rgba(31, 38, 135, 0.20);
+  animation: topBarSlideIn 0.22s ease;
+}
+
+.top-bar.compact {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  border-radius: 16px;
+}
+
+.top-bar.compact .file-btn {
+  min-width: 120px;
+  padding: 8px 14px;
+  border-radius: 12px;
+}
+
+.top-bar.compact .file-btn-main {
+  font-size: 13px;
+}
+
+.top-bar.compact .file-btn-sub {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.top-bar.compact button {
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.top-bar.compact .left-actions {
+  gap: 8px;
+}
+
+.top-bar.compact .threshold-card {
+  padding: 8px 10px;
+  border-radius: 12px;
+}
+
+.top-bar.compact .threshold-label {
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.top-bar.compact .right-controls {
+  align-items: center;
+}
+
+.top-bar-placeholder {
+  width: 100%;
+  margin-bottom: 14px;
+}
+
+@keyframes topBarSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .left-actions {
@@ -1294,7 +1418,7 @@ button:disabled {
   border-radius: 22px;
   padding: 16px;
   min-width: 0;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .panel-header {
@@ -1486,7 +1610,7 @@ button:disabled {
   border: 1px dashed rgba(59, 130, 246, 0.45);
   background: rgba(255, 255, 255, 0.52);
   color: #0f172a;
-  overflow: hidden;
+  overflow-x: hidden;
   white-space: nowrap;
   line-height: 1.15;
 }
@@ -1592,7 +1716,7 @@ table {
   border-collapse: collapse;
   background: rgba(255, 255, 255, 0.58);
   border-radius: 14px;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 th,

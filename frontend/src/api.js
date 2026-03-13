@@ -5,13 +5,20 @@ const request = axios.create({
   timeout: 600000
 });
 
-export function uploadImage(file) {
+export function uploadImage(file, onProgress) {
   const formData = new FormData();
   formData.append("file", file);
 
   return request.post("/api/ocr/image", formData, {
     headers: {
       "Content-Type": "multipart/form-data"
+    },
+    onUploadProgress: (event) => {
+      if (!event.total) return;
+      const percent = Math.round((event.loaded * 100) / event.total);
+      if (typeof onProgress === "function") {
+        onProgress(percent);
+      }
     }
   });
 }

@@ -53,6 +53,8 @@
           for="ocr-file-input"
           class="file-btn"
           :class="{ disabled: loading, selected: !!fileName }"
+          :title="fileName || '未选择文件'"
+          :data-filename="fileName || '未选择文件'"
         >
           <span class="file-btn-main">{{ fileName ? "更换图片" : "选择图片" }}</span>
           <span class="file-btn-sub">{{ fileName ? "已选择文件" : "未选择文件" }}</span>
@@ -240,7 +242,7 @@
 
             <!-- 可鼠标划取复制的文字层 -->
             <div
-              v-if="showOverlayText && visMeta.baseWidth > 0 && filteredTexts.length"
+              v-if="showOverlayText && visMeta.baseWidth > 0 && reviewItems.length"
               class="ocr-overlay"
               :style="{
                 width: `${visMeta.baseWidth * visZoom}px`,
@@ -248,11 +250,18 @@
               }"
             >
               <div
-                v-for="(item, index) in filteredTexts"
-                :key="index"
+                v-for="item in reviewItems"
+                :key="item._filteredIndex"
                 class="selectable-box"
+                :class="[
+                  getScoreClass(item.score),
+                  { active: hoveredResultIndex === item._filteredIndex || focusedResultIndex === item._filteredIndex }
+                ]"
                 :style="getOverlayStyle(item.box)"
                 :title="item.text"
+                @mouseenter="hoveredResultIndex = item._filteredIndex"
+                @mouseleave="hoveredResultIndex = null"
+                @click.stop="focusResult(item._filteredIndex, { scrollCanvas: true, scrollTable: true })"
               >
                 {{ item.text }}
               </div>
@@ -325,6 +334,52 @@
             {{ resultTipText }}
           </div>
 
+          <div class="review-filter-bar">
+            <button
+              class="mini-filter-btn"
+              :class="{ active: reviewFilterMode === 'all' }"
+              @click="reviewFilterMode = 'all'"
+            >
+              全部结果
+            </button>
+            <button
+              class="mini-filter-btn"
+              :class="{ active: reviewFilterMode === 'low' }"
+              @click="reviewFilterMode = 'low'"
+            >
+              仅低置信度
+            </button>
+
+            <div class="low-nav-group">
+              <button
+                class="mini-nav-btn"
+                @click="focusPrevLowConfidence"
+                :disabled="!lowConfidenceFilteredIndexes.length"
+              >
+                上一个低置信度
+              </button>
+              <button
+                class="mini-nav-btn"
+                @click="focusNextLowConfidence"
+                :disabled="!lowConfidenceFilteredIndexes.length"
+              >
+                下一个低置信度
+              </button>
+            </div>
+
+            <span class="review-filter-count">
+              当前审阅 {{ reviewItems.length }} / {{ filteredTexts.length }}
+            </span>
+
+            <span class="review-filter-count">
+              {{
+                lowConfidenceFilteredIndexes.length
+                  ? `低置信度导航 ${currentLowConfidenceNavIndex >= 0 ? currentLowConfidenceNavIndex + 1 : 0} / ${lowConfidenceFilteredIndexes.length}`
+                  : '当前无低置信度结果'
+              }}
+            </span>
+          </div>
+
           <div class="merged-box">
             <div class="merged-header">
               <span>合并文本</span>
@@ -334,7 +389,7 @@
           </div>
         </div>
 
-        <div class="table-wrap" v-if="filteredTexts.length">
+        <div class="table-wrap" v-if="reviewItems.length">
           <table>
             <thead>
               <tr>
@@ -345,8 +400,19 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(item, index) in filteredTexts" :key="index">
-                <td>{{ index + 1 }}</td>
+              <tr
+                v-for="(item, reviewIndex) in reviewItems"
+                :key="item._filteredIndex"
+                :ref="el => setResultRowRef(el, item._filteredIndex)"
+                :class="[
+                  getScoreClass(item.score),
+                  { active: hoveredResultIndex === item._filteredIndex || focusedResultIndex === item._filteredIndex }
+                ]"
+                @mouseenter="hoveredResultIndex = item._filteredIndex"
+                @mouseleave="hoveredResultIndex = null"
+                @click="focusResult(item._filteredIndex, { scrollCanvas: true, scrollTable: false })"
+              >
+                <td>{{ reviewIndex + 1 }}</td>
                 <td>{{ item.text }}</td>
                 <td>{{ Number(item.score).toFixed(4) }}</td>
                 <td>
@@ -360,7 +426,7 @@
         </div>
 
         <div v-else class="placeholder result-placeholder">
-          当前阈值下暂无可显示结果
+          当前审阅模式下暂无可显示结果
         </div>
       </template>
 
@@ -399,6 +465,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { uploadImage } from "./api";
 
 const backendBase = "http://127.0.0.1:8000";
+const LOW_CONFIDENCE_CUTOFF = 0.6;
 
 const file = ref(null);
 const fileName = ref("");
@@ -414,6 +481,10 @@ const showOverlayText = ref(true);
 
 const confidenceThreshold = ref(0.3);
 const activeTab = ref("result");
+const hoveredResultIndex = ref(null);
+const focusedResultIndex = ref(null);
+const resultRowRefs = ref([]);
+const reviewFilterMode = ref("all"); // all | low
 
 const fileInputRef = ref(null);
 const topBarRef = ref(null);
@@ -457,6 +528,29 @@ let currentObjectUrl = "";
 
 const filteredTexts = computed(() => {
   return texts.value.filter(item => Number(item.score || 0) >= confidenceThreshold.value);
+});
+
+const reviewItems = computed(() => {
+  const base = filteredTexts.value.map((item, index) => ({
+    ...item,
+    _filteredIndex: index
+  }));
+
+  if (reviewFilterMode.value === "low") {
+    return base.filter(item => Number(item.score || 0) < LOW_CONFIDENCE_CUTOFF);
+  }
+
+  return base;
+});
+
+const lowConfidenceFilteredIndexes = computed(() => {
+  return filteredTexts.value
+    .map((item, index) => (Number(item.score || 0) < LOW_CONFIDENCE_CUTOFF ? index : null))
+    .filter(index => index !== null);
+});
+
+const currentLowConfidenceNavIndex = computed(() => {
+  return lowConfidenceFilteredIndexes.value.indexOf(focusedResultIndex.value);
 });
 
 const mergedText = computed(() => {
@@ -507,7 +601,7 @@ const resultTipText = computed(() => {
   if (texts.value.length > 0 && filteredTexts.value.length === 0) {
     return "当前阈值过高，结果已被全部过滤。可适当降低阈值。";
   }
-  if (avgScore.value > 0 && avgScore.value < 0.6) {
+  if (avgScore.value > 0 && avgScore.value < LOW_CONFIDENCE_CUTOFF) {
     return "当前识别结果整体置信度较低，建议更换更清晰的图片或继续优化模型。";
   }
   return "当前识别流程运行正常，已成功返回文本结果。";
@@ -516,7 +610,7 @@ const resultTipText = computed(() => {
 const resultTipClass = computed(() => {
   if (!file.value) return "neutral";
   if (texts.value.length > 0 && filteredTexts.value.length === 0) return "warning";
-  if (avgScore.value > 0 && avgScore.value < 0.6) return "warning";
+  if (avgScore.value > 0 && avgScore.value < LOW_CONFIDENCE_CUTOFF) return "warning";
   return "success";
 });
 
@@ -548,6 +642,10 @@ function setSelectedFile(selected) {
   elapsedMs.value = 0;
   uploadPercent.value = 0;
   showOverlayText.value = true;
+  focusedResultIndex.value = null;
+  hoveredResultIndex.value = null;
+  resultRowRefs.value = [];
+  reviewFilterMode.value = "all";
 
   srcZoom.value = 1;
   visZoom.value = 1;
@@ -609,6 +707,10 @@ function clearAll() {
   uploadPercent.value = 0;
   dragActive.value = false;
   showOverlayText.value = true;
+  focusedResultIndex.value = null;
+  hoveredResultIndex.value = null;
+  resultRowRefs.value = [];
+  reviewFilterMode.value = "all";
 
   srcZoom.value = 1;
   visZoom.value = 1;
@@ -652,6 +754,10 @@ async function startOCR() {
     texts.value = data.texts || [];
     elapsedMs.value = performance.now() - start;
     uploadPercent.value = 100;
+    focusedResultIndex.value = null;
+    hoveredResultIndex.value = null;
+    resultRowRefs.value = [];
+    reviewFilterMode.value = "all";
 
     await nextTick();
     setTimeout(() => fitToShell("vis"), 30);
@@ -663,7 +769,7 @@ async function startOCR() {
       addLog("未检测到有效文本。");
     } else if (filteredTexts.value.length === 0) {
       addLog("当前阈值下暂无可显示结果。");
-    } else if (avgScore.value < 0.6) {
+    } else if (avgScore.value < LOW_CONFIDENCE_CUTOFF) {
       addLog("当前识别结果整体置信度较低。");
     }
   } catch (error) {
@@ -710,15 +816,39 @@ function toggleOverlayText() {
 function getScoreLabel(score) {
   const s = Number(score || 0);
   if (s >= 0.9) return "高";
-  if (s >= 0.6) return "中";
+  if (s >= LOW_CONFIDENCE_CUTOFF) return "中";
   return "低";
 }
 
 function getScoreClass(score) {
   const s = Number(score || 0);
   if (s >= 0.9) return "high";
-  if (s >= 0.6) return "mid";
+  if (s >= LOW_CONFIDENCE_CUTOFF) return "mid";
   return "low";
+}
+
+function focusLowConfidenceByOffset(step = 1) {
+  const indexes = lowConfidenceFilteredIndexes.value;
+  if (!indexes.length) return;
+
+  const currentPos = indexes.indexOf(focusedResultIndex.value);
+  let targetPos = 0;
+
+  if (currentPos === -1) {
+    targetPos = step > 0 ? 0 : indexes.length - 1;
+  } else {
+    targetPos = (currentPos + step + indexes.length) % indexes.length;
+  }
+
+  focusResult(indexes[targetPos], { scrollCanvas: true, scrollTable: true });
+}
+
+function focusNextLowConfidence() {
+  focusLowConfidenceByOffset(1);
+}
+
+function focusPrevLowConfidence() {
+  focusLowConfidenceByOffset(-1);
 }
 
 function getShell(kind) {
@@ -729,7 +859,7 @@ function startPan(kind, event) {
   if (event.button !== 0) return;
   const shell = getShell(kind);
   if (!shell) return;
-  if (event.target.closest('.selectable-box')) return;
+  if (event.target.closest(".selectable-box")) return;
 
   panState.value = {
     active: true,
@@ -773,7 +903,6 @@ function changeZoom(kind, delta) {
     return;
   }
 
-  // 以当前画框可视区域中心为缩放中心
   const centerX = shell.scrollLeft + shell.clientWidth / 2;
   const centerY = shell.scrollTop + shell.clientHeight / 2;
   const ratio = nextZoom / prevZoom;
@@ -832,7 +961,6 @@ function fitToShell(kind) {
   meta.value.baseWidth = Math.round(meta.value.naturalWidth * ratio);
   meta.value.baseHeight = Math.round(meta.value.naturalHeight * ratio);
 
-  // 让右边默认大小跟左边保持一致
   if (
     kind === "vis" &&
     srcMeta.value.baseWidth > 0 &&
@@ -914,6 +1042,57 @@ function getOverlayStyle(box) {
     minHeight: `${height}px`,
     fontSize: `${fontSize}px`
   };
+}
+
+function getBoxBounds(box) {
+  if (!Array.isArray(box) || box.length === 0) return null;
+
+  const points = box.map(p => ({ x: Number(p[0]), y: Number(p[1]) }));
+  return {
+    minX: Math.min(...points.map(p => p.x)),
+    maxX: Math.max(...points.map(p => p.x)),
+    minY: Math.min(...points.map(p => p.y)),
+    maxY: Math.max(...points.map(p => p.y))
+  };
+}
+
+function setResultRowRef(el, index) {
+  if (el) resultRowRefs.value[index] = el;
+}
+
+function focusResult(index, options = {}) {
+  const { scrollCanvas = true, scrollTable = true } = options;
+  const item = filteredTexts.value[index];
+  if (!item) return;
+
+  focusedResultIndex.value = index;
+
+  if (scrollCanvas) {
+    const shell = visShellRef.value;
+    const bounds = getBoxBounds(item.box);
+    if (shell && bounds && visMeta.value.naturalWidth && visMeta.value.naturalHeight) {
+      const stageWidth = visMeta.value.baseWidth * visZoom.value;
+      const stageHeight = visMeta.value.baseHeight * visZoom.value;
+      const scaleX = stageWidth / visMeta.value.naturalWidth;
+      const scaleY = stageHeight / visMeta.value.naturalHeight;
+
+      const centerX = ((bounds.minX + bounds.maxX) / 2) * scaleX;
+      const centerY = ((bounds.minY + bounds.maxY) / 2) * scaleY;
+
+      shell.scrollTo({
+        left: Math.max(centerX - shell.clientWidth / 2, 0),
+        top: Math.max(centerY - shell.clientHeight / 2, 0),
+        behavior: "smooth"
+      });
+    }
+  }
+
+  if (scrollTable) {
+    const row = resultRowRefs.value[index];
+    if (row && typeof row.scrollIntoView === "function") {
+      row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
 }
 
 function updateTopBarMetrics() {
@@ -1258,6 +1437,7 @@ onBeforeUnmount(() => {
 }
 
 .file-btn {
+  position: relative;
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1270,12 +1450,34 @@ onBeforeUnmount(() => {
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
   cursor: pointer !important;
+  overflow: visible;
 }
 
 .file-btn:hover:not(.disabled) {
   transform: translateY(-2px) scale(1.02);
   box-shadow: 0 12px 26px rgba(37, 99, 235, 0.16);
   background: rgba(255, 255, 255, 0.92);
+}
+
+.file-btn:hover::after {
+  content: attr(data-filename);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  max-width: 320px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+  z-index: 1200;
+  pointer-events: none;
 }
 
 .file-btn:active:not(.disabled) {
@@ -1613,6 +1815,28 @@ button:disabled {
   overflow-x: hidden;
   white-space: nowrap;
   line-height: 1.15;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.selectable-box.high {
+  border-color: rgba(34, 197, 94, 0.95);
+  background: rgba(240, 253, 244, 0.82);
+}
+
+.selectable-box.mid {
+  border-color: rgba(234, 179, 8, 0.95);
+  background: rgba(254, 249, 195, 0.82);
+}
+
+.selectable-box.low {
+  border-color: rgba(239, 68, 68, 0.95);
+  background: rgba(254, 226, 226, 0.82);
+}
+
+.selectable-box.active {
+  border-color: rgba(37, 99, 235, 0.95);
+  background: rgba(219, 234, 254, 0.88);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.18);
 }
 
 .tabs-bar {
@@ -1675,6 +1899,55 @@ button:disabled {
   border: 1px solid rgba(183, 235, 143, 0.85);
 }
 
+.review-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.mini-filter-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mini-filter-btn.active {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
+}
+
+.low-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mini-nav-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.review-filter-count {
+  font-size: 13px;
+  color: #64748b;
+}
+
 .merged-box {
   margin-bottom: 12px;
 }
@@ -1711,6 +1984,31 @@ button:disabled {
   border-radius: 14px;
 }
 
+.table-wrap tbody tr {
+  cursor: pointer;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.table-wrap tbody tr:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.table-wrap tbody tr.active {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.table-wrap tbody tr.high td:first-child {
+  box-shadow: inset 4px 0 0 rgba(34, 197, 94, 0.95);
+}
+
+.table-wrap tbody tr.mid td:first-child {
+  box-shadow: inset 4px 0 0 rgba(234, 179, 8, 0.95);
+}
+
+.table-wrap tbody tr.low td:first-child {
+  box-shadow: inset 4px 0 0 rgba(239, 68, 68, 0.95);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -1729,6 +2027,14 @@ td {
 
 th {
   background: rgba(239, 246, 255, 0.92);
+}
+
+tbody tr {
+  transition: background 0.15s ease;
+}
+
+tbody tr.active {
+  background: rgba(219, 234, 254, 0.62);
 }
 
 .placeholder {
@@ -1750,18 +2056,18 @@ th {
 }
 
 .score-badge.high {
-  background: rgba(246, 255, 237, 0.9);
-  color: #389e0d;
+  background: rgba(240, 253, 244, 0.95);
+  color: #15803d;
 }
 
 .score-badge.mid {
-  background: rgba(255, 247, 230, 0.9);
-  color: #d48806;
+  background: rgba(254, 249, 195, 0.95);
+  color: #a16207;
 }
 
 .score-badge.low {
-  background: rgba(255, 241, 240, 0.9);
-  color: #cf1322;
+  background: rgba(254, 226, 226, 0.95);
+  color: #dc2626;
 }
 
 .log-box {

@@ -2816,10 +2816,14 @@ button:disabled {
 
 .tab-panel {
   min-height: 320px;
-  max-height: 430px;
-  border-radius: 22px;
-  padding: 16px;
-  overflow: auto;
+  border-radius: 26px;
+  padding: 22px;
+  overflow: visible;
+  background: linear-gradient(180deg, #eef5ff 0%, #edf4fb 100%);
+  border: 1px solid rgba(214, 226, 245, 0.95);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 8px 24px rgba(148, 163, 184, 0.08);
 }
 
 .result-top {
@@ -2881,24 +2885,47 @@ button:disabled {
   gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(245, 248, 255, 0.92),
+    rgba(238, 243, 255, 0.82)
+  );
+  border: 1px solid rgba(191, 219, 254, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .mini-filter-btn {
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(255,255,255,0.72);
-  border: 1px solid rgba(203, 213, 225, 0.9);
-  color: #475569;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(191, 219, 254, 0.75);
+  color: #52607a;
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(148, 163, 184, 0.08);
+}
+
+.mini-filter-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(147, 197, 253, 0.95);
+  color: #334155;
 }
 
 .mini-filter-btn.active {
-  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  background: linear-gradient(135deg, #3148a2, #b79cff);
+  color: #ffffff;
+  border-color: rgba(139, 92, 246, 0.18);
+  box-shadow: 0 6px 14px rgba(99, 102, 241, 0.16);
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, #315efb, #7c3aed);
   color: #fff;
   border-color: transparent;
-  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.24);
 }
 
 .low-nav-group {
@@ -2955,7 +2982,7 @@ button:disabled {
 }
 
 .table-wrap {
-  max-height: 220px;
+  max-height: 280px;
   overflow: auto;
   border-radius: 14px;
 }
@@ -3145,14 +3172,14 @@ tbody tr.active {
 
 .shortcut-tip {
   width: 100%;
-  margin-top: 2px;
+  margin-top: 4px;
   font-size: 12px;
-  color: #64748b;
+  color: #6b7a90;
   line-height: 1.7;
   padding: 8px 10px;
   border-radius: 10px;
-  background: rgba(248, 250, 252, 0.7);
-  border: 1px dashed rgba(203, 213, 225, 0.9);
+  background: rgba(255, 255, 255, 0.52);
+  border: 1px dashed rgba(191, 219, 254, 0.7);
 }
 
 .help-trigger-btn {

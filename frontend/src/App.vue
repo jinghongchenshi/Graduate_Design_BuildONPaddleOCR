@@ -24,6 +24,75 @@
       </div>
     </div>
 
+    <div v-if="showHelpModal" class="help-modal-mask" @click="closeHelpModal">
+      <div class="help-modal glass" @click.stop>
+        <div class="help-modal-header">
+          <div>
+            <h3>使用帮助</h3>
+            <p>快捷键、鼠标操作与复核说明</p>
+          </div>
+          <button class="help-close-btn" @click="closeHelpModal">×</button>
+        </div>
+
+        <div class="help-modal-body">
+          <div class="help-section">
+            <h4>快捷键操作</h4>
+            <div class="help-kbd-grid">
+              <div class="help-kbd-item"><kbd>A</kbd><span>上一条结果（全部结果导航）</span></div>
+              <div class="help-kbd-item"><kbd>D</kbd><span>下一条结果（全部结果导航）</span></div>
+              <div class="help-kbd-item"><kbd>Z</kbd><span>上一个低置信度</span></div>
+              <div class="help-kbd-item"><kbd>C</kbd><span>下一个低置信度</span></div>
+              <div class="help-kbd-item"><kbd>J</kbd><span>上一个需复核</span></div>
+              <div class="help-kbd-item"><kbd>L</kbd><span>下一个需复核</span></div>
+              <div class="help-kbd-item"><kbd>1</kbd><span>标记为未检查</span></div>
+              <div class="help-kbd-item"><kbd>2</kbd><span>标记为已检查</span></div>
+              <div class="help-kbd-item"><kbd>3</kbd><span>标记为需复核</span></div>
+              <div class="help-kbd-item"><kbd>Q</kbd><span>切换到全部结果</span></div>
+              <div class="help-kbd-item"><kbd>F</kbd><span>切换到仅低置信度</span></div>
+              <div class="help-kbd-item"><kbd>T</kbd><span>切换到仅高置信度</span></div>
+              <div class="help-kbd-item"><kbd>W</kbd><span>切换到仅未检查</span></div>
+              <div class="help-kbd-item"><kbd>E</kbd><span>切换到仅需复核</span></div>
+              <div class="help-kbd-item"><kbd>R</kbd><span>复位右侧检测结果缩放</span></div>
+              <div class="help-kbd-item"><kbd>Esc</kbd><span>关闭帮助浮窗</span></div>
+            </div>
+          </div>
+
+          <div class="help-section">
+            <h4>鼠标操作</h4>
+            <ul class="help-list">
+              <li><strong>Ctrl + 左键</strong>：增选或取消选中单条记录。</li>
+              <li><strong>Shift + 左键</strong>：按当前列表顺序连续多选一段记录。</li>
+              <li>点击表格中的某一行，可自动定位到右侧对应检测框。</li>
+              <li>点击右侧检测框中的文字，也会联动高亮表格中的对应结果。</li>
+              <li>滚轮可对图片进行缩放，双击图片区域可快速复位。</li>
+              <li>按住左键拖动画布，可查看放大后的细节区域。</li>
+              <li>支持拖拽图片上传，也支持截图后按 <strong>Ctrl + V</strong> 粘贴图片。</li>
+            </ul>
+          </div>
+
+          <div class="help-section">
+            <h4>复核说明</h4>
+            <ul class="help-list">
+              <li>可将结果标记为 <strong>未检查</strong>、<strong>已检查</strong>、<strong>需复核</strong>。</li>
+              <li>支持按筛选模式查看：全部、仅低置信度、仅高置信度、仅未检查、仅需复核。</li>
+              <li>导出 CSV 时会一并导出当前结果的检查状态。</li>
+              <li>支持对“当前筛选结果”进行批量标记。</li>
+              <li>同一图片的复核状态会自动保存在本地，重新打开后会尝试恢复。</li>
+            </ul>
+          </div>
+
+          <div class="help-section">
+            <h4>使用建议</h4>
+            <ul class="help-list">
+              <li>先用低置信度筛选快速检查明显问题，再切换到全部结果做整体复核。</li>
+              <li>遇到可疑结果可先标记为“需复核”，最后统一通过需复核导航处理。</li>
+              <li>若识别效果较差，可尝试更清晰的截图或优化后端模型。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <header class="hero glass">
       <div>
         <h1>教材 OCR 识别系统</h1>
@@ -53,11 +122,10 @@
           for="ocr-file-input"
           class="file-btn"
           :class="{ disabled: loading, selected: !!fileName }"
-          :title="fileName || '未选择文件'"
-          :data-filename="fileName || '未选择文件'"
         >
           <span class="file-btn-main">{{ fileName ? "更换图片" : "选择图片" }}</span>
           <span class="file-btn-sub">{{ fileName ? "已选择文件" : "未选择文件" }}</span>
+          <span class="file-hover-name">{{ fileName || "未选择文件" }}</span>
         </label>
 
         <input
@@ -80,6 +148,14 @@
 
         <button class="secondary" @click="exportTxt" :disabled="!filteredTexts.length || loading">
           导出 TXT
+        </button>
+
+        <button class="secondary" @click="exportCsv" :disabled="!reviewItems.length || loading">
+          导出 CSV
+        </button>
+
+        <button class="secondary help-trigger-btn" @click="openHelpModal">
+          帮助
         </button>
 
         <button class="danger" @click="clearAll" :disabled="loading">
@@ -137,48 +213,55 @@
           </div>
         </div>
 
-        <div
-          ref="srcShellRef"
-          class="canvas-shell"
-          :class="{ pannable: !!imagePreview, panning: panState.active && panState.kind === 'src' }"
-          @wheel.prevent="handleWheelZoom('src', $event)"
-          @mousedown="startPan('src', $event)"
-        >
-          <!-- 空状态 -->
-          <div
-            v-if="!imagePreview"
-            class="empty-upload-zone"
-            :class="{ dragover: dragActive, disabled: loading }"
-            @click="triggerFileSelect"
-            @dragover.prevent="handleDragOver"
-            @dragleave.prevent="handleDragLeave"
-            @drop.prevent="handleDrop"
-          >
-            <div class="empty-upload-icon">🖼️</div>
-            <div class="empty-upload-title">拖拽图片到这里也可以上传</div>
-            <div class="empty-upload-desc">
-              支持 JPG / PNG / BMP / WEBP，也支持直接截图后按 <strong>Ctrl + V</strong> 粘贴图片
-            </div>
-            <div class="empty-upload-action">{{ loading ? "处理中..." : "点击选择图片" }}</div>
-
-            <div v-if="loading" class="progress-wrap inline-progress zone-progress">
-              <div class="progress-bar" :style="{ width: `${progressDisplay}%` }"></div>
-            </div>
+        <div class="canvas-frame">
+          <div v-if="srcZoomToast" class="zoom-toast">
+            {{ Math.round(srcZoom * 100) }}%
           </div>
 
-          <!-- 有图状态 -->
           <div
-            v-else
-            class="stage"
-            :style="getStageStyle('src')"
+            ref="srcShellRef"
+            class="canvas-shell"
+            :class="{ pannable: !!imagePreview, panning: panState.active && panState.kind === 'src' }"
+            @wheel.prevent="handleWheelZoom('src', $event)"
+            @mousedown="startPan('src', $event)"
+            @dblclick.stop.prevent="imagePreview && resetZoom('src')"
           >
-            <img
-              ref="srcImgRef"
-              :src="imagePreview"
-              class="stage-img"
-              @load="handleImageLoad('src')"
-              draggable="false"
-            />
+            <!-- 空状态 -->
+            <div
+              v-if="!imagePreview"
+              class="empty-upload-zone"
+              :class="{ dragover: dragActive, disabled: loading }"
+              @click="triggerFileSelect"
+              @dragover.prevent="handleDragOver"
+              @dragleave.prevent="handleDragLeave"
+              @drop.prevent="handleDrop"
+            >
+              <div class="empty-upload-icon">🖼️</div>
+              <div class="empty-upload-title">拖拽图片到这里也可以上传</div>
+              <div class="empty-upload-desc">
+                支持 JPG / PNG / BMP / WEBP，也支持直接截图后按 <strong>Ctrl + V</strong> 粘贴图片
+              </div>
+              <div class="empty-upload-action">{{ loading ? "处理中..." : "点击选择图片" }}</div>
+
+              <div v-if="loading" class="progress-wrap inline-progress zone-progress">
+                <div class="progress-bar" :style="{ width: `${progressDisplay}%` }"></div>
+              </div>
+            </div>
+
+            <!-- 有图状态 -->
+            <div
+              v-else
+              class="stage"
+              :style="getStageStyle('src')"
+            >
+              <img
+                ref="srcImgRef"
+                :src="imagePreview"
+                class="stage-img"
+                @load="handleImageLoad('src')"
+                draggable="false"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -220,56 +303,66 @@
           </div>
         </div>
 
-        <div
-          ref="visShellRef"
-          class="canvas-shell"
-          :class="{ pannable: !!visUrl, panning: panState.active && panState.kind === 'vis' }"
-          @wheel.prevent="handleWheelZoom('vis', $event)"
-          @mousedown="startPan('vis', $event)"
-        >
-          <div
-            v-if="visUrl"
-            class="stage"
-            :style="getStageStyle('vis')"
-          >
-            <img
-              ref="visImgRef"
-              :src="backendBase + visUrl"
-              class="stage-img"
-              @load="handleImageLoad('vis')"
-              draggable="false"
-            />
-
-            <!-- 可鼠标划取复制的文字层 -->
-            <div
-              v-if="showOverlayText && visMeta.baseWidth > 0 && reviewItems.length"
-              class="ocr-overlay"
-              :style="{
-                width: `${visMeta.baseWidth * visZoom}px`,
-                height: `${visMeta.baseHeight * visZoom}px`
-              }"
-            >
-              <div
-                v-for="item in reviewItems"
-                :key="item._filteredIndex"
-                class="selectable-box"
-                :class="[
-                  getScoreClass(item.score),
-                  { active: hoveredResultIndex === item._filteredIndex || focusedResultIndex === item._filteredIndex }
-                ]"
-                :style="getOverlayStyle(item.box)"
-                :title="item.text"
-                @mouseenter="hoveredResultIndex = item._filteredIndex"
-                @mouseleave="hoveredResultIndex = null"
-                @click.stop="focusResult(item._filteredIndex, { scrollCanvas: true, scrollTable: true })"
-              >
-                {{ item.text }}
-              </div>
-            </div>
+        <div class="canvas-frame">
+          <div v-if="visZoomToast" class="zoom-toast">
+            {{ Math.round(visZoom * 100) }}%
           </div>
 
-          <div v-else class="placeholder large-placeholder">
-            {{ loading ? "正在生成可视化结果..." : "识别后这里显示检测框图" }}
+          <div
+            ref="visShellRef"
+            class="canvas-shell"
+            :class="{ pannable: !!visUrl, panning: panState.active && panState.kind === 'vis' }"
+            @wheel.prevent="handleWheelZoom('vis', $event)"
+            @mousedown="startPan('vis', $event)"
+            @dblclick.stop.prevent="visUrl && resetZoom('vis')"
+          >
+            <div
+              v-if="visUrl"
+              class="stage"
+              :style="getStageStyle('vis')"
+            >
+              <img
+                ref="visImgRef"
+                :src="backendBase + visUrl"
+                class="stage-img"
+                @load="handleImageLoad('vis')"
+                draggable="false"
+              />
+
+              <!-- 可鼠标划取复制的文字层 -->
+              <div
+                v-if="showOverlayText && visMeta.baseWidth > 0 && reviewItems.length"
+                class="ocr-overlay"
+                :style="{
+                  width: `${visMeta.baseWidth * visZoom}px`,
+                  height: `${visMeta.baseHeight * visZoom}px`
+                }"
+              >
+                <div
+                  v-for="item in reviewItems"
+                  :key="item._filteredIndex"
+                  class="selectable-box"
+                  :class="[
+                    getScoreClass(item.score),
+                    { 
+                      selected: isResultSelected(item._filteredIndex),
+                      active: hoveredResultIndex === item._filteredIndex || focusedResultIndex === item._filteredIndex 
+                    }
+                  ]"
+                  :style="getOverlayStyle(item.box)"
+                  :title="item.text"
+                  @mouseenter="hoveredResultIndex = item._filteredIndex"
+                  @mouseleave="hoveredResultIndex = null"
+                  @click.stop="handleResultSelection(item._filteredIndex, $event, { scrollCanvas: true, scrollTable: true })"
+                >
+                  {{ item.text }}
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="placeholder large-placeholder">
+              {{ loading ? "正在生成可视化结果..." : "识别后这里显示检测框图" }}
+            </div>
           </div>
         </div>
       </div>
@@ -334,6 +427,55 @@
             {{ resultTipText }}
           </div>
 
+          <div class="summary-strip">
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">总识别</span>
+              <strong>{{ texts.length }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">阈值后显示</span>
+              <strong>{{ filteredTexts.length }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">当前审阅</span>
+              <strong>
+                {{ reviewItems.length ? `${currentReviewNavIndex >= 0 ? currentReviewNavIndex + 1 : 0} / ${reviewItems.length}` : "0 / 0" }}
+              </strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">低置信度</span>
+              <strong>{{ lowConfidenceFilteredIndexes.length }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">未检查</span>
+              <strong>{{ uncheckedCount }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">需复核</span>
+              <strong>{{ needsReviewCount }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">平均置信度</span>
+              <strong>{{ avgScoreText }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">审阅模式</span>
+              <strong>
+                {{
+                  reviewFilterMode === "low"
+                    ? "仅低置信度"
+                    : reviewFilterMode === "high"
+                    ? "仅高置信度"
+                    : reviewFilterMode === "unchecked"
+                    ? "仅未检查"
+                    : reviewFilterMode === "needsReview"
+                    ? "仅需复核"
+                    : "全部结果"
+                }}
+              </strong>
+            </div>
+          </div>
+
           <div class="review-filter-bar">
             <button
               class="mini-filter-btn"
@@ -348,6 +490,27 @@
               @click="reviewFilterMode = 'low'"
             >
               仅低置信度
+            </button>
+            <button
+              class="mini-filter-btn"
+              :class="{ active: reviewFilterMode === 'high' }"
+              @click="reviewFilterMode = 'high'"
+            >
+              仅高置信度
+            </button>
+            <button
+              class="mini-filter-btn"
+              :class="{ active: reviewFilterMode === 'unchecked' }"
+              @click="reviewFilterMode = 'unchecked'"
+            >
+              仅未检查
+            </button>
+            <button
+              class="mini-filter-btn"
+              :class="{ active: reviewFilterMode === 'needsReview' }"
+              @click="reviewFilterMode = 'needsReview'"
+            >
+              仅需复核
             </button>
 
             <div class="low-nav-group">
@@ -367,8 +530,25 @@
               </button>
             </div>
 
+            <div class="low-nav-group">
+              <button
+                class="mini-nav-btn"
+                @click="focusPrevNeedsReview"
+                :disabled="!needsReviewFilteredIndexes.length"
+              >
+                上一个需复核
+              </button>
+              <button
+                class="mini-nav-btn"
+                @click="focusNextNeedsReview"
+                :disabled="!needsReviewFilteredIndexes.length"
+              >
+                下一个需复核
+              </button>
+            </div>
+
             <span class="review-filter-count">
-              当前审阅 {{ reviewItems.length }} / {{ filteredTexts.length }}
+              当前审阅 {{ currentReviewNavIndex >= 0 ? currentReviewNavIndex + 1 : 0 }} / {{ reviewItems.length }}
             </span>
 
             <span class="review-filter-count">
@@ -378,6 +558,62 @@
                   : '当前无低置信度结果'
               }}
             </span>
+
+            <span class="review-filter-count">
+              {{
+                needsReviewFilteredIndexes.length
+                  ? `需复核导航 ${currentNeedsReviewNavIndex >= 0 ? currentNeedsReviewNavIndex + 1 : 0} / ${needsReviewFilteredIndexes.length}`
+                  : '当前无需复核结果'
+              }}
+            </span>
+
+            <div class="shortcut-tip">
+              快捷键：A/D 上一条/下一条　Z/C 上下低置信度　J/L 上下需复核　1 未检查　2 已检查　3 需复核　Q 全部　F 仅低置信度　T 仅高置信度　W 仅未检查　E 仅需复核　R 复位右图。支持 Ctrl/Shift + 左键多选，批量操作优先作用于选中项。
+            </div>
+          </div>
+
+          <div class="batch-review-bar glass-lite">
+            <div class="batch-review-info">
+              <span class="batch-review-title">批量操作</span>
+              <span class="batch-review-desc">
+                {{
+                  selectedReviewItems.length
+                    ? `当前已选中 ${selectedReviewItems.length} 条，批量操作将优先作用于选中项`
+                    : `当前未选中记录，默认对当前筛选结果 ${reviewItems.length} 条生效`
+                }}
+              </span>
+            </div>
+
+            <div class="batch-review-actions">
+              <button
+                class="batch-action-btn"
+                @click="applyBulkReviewStatus('unchecked')"
+                :disabled="!effectiveBulkItems.length"
+              >
+                批量标记为未检查
+              </button>
+              <button
+                class="batch-action-btn"
+                @click="applyBulkReviewStatus('checked')"
+                :disabled="!effectiveBulkItems.length"
+              >
+                批量标记为已检查
+              </button>
+              <button
+                class="batch-action-btn danger-batch"
+                @click="applyBulkReviewStatus('needsReview')"
+                :disabled="!effectiveBulkItems.length"
+              >
+                批量标记为需复核
+              </button>
+              <button
+                class="batch-action-btn"
+                @click="clearSelectedResults"
+                :disabled="!selectedResultIndexes.length"
+              >
+                清空选中
+              </button>
+            </div>
           </div>
 
           <div class="merged-box">
@@ -397,6 +633,8 @@
                 <th>文本</th>
                 <th style="width: 120px;">置信度</th>
                 <th style="width: 120px;">质量判断</th>
+                <th style="width: 120px;">检查状态</th>
+                <th style="width: 250px;">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -406,11 +644,14 @@
                 :ref="el => setResultRowRef(el, item._filteredIndex)"
                 :class="[
                   getScoreClass(item.score),
-                  { active: hoveredResultIndex === item._filteredIndex || focusedResultIndex === item._filteredIndex }
+                  {
+                    selected: isResultSelected(item._filteredIndex),
+                    active: hoveredResultIndex === item._filteredIndex || focusedResultIndex === item._filteredIndex
+                  }
                 ]"
                 @mouseenter="hoveredResultIndex = item._filteredIndex"
                 @mouseleave="hoveredResultIndex = null"
-                @click="focusResult(item._filteredIndex, { scrollCanvas: true, scrollTable: false })"
+                @click="handleResultSelection(item._filteredIndex, $event, { scrollCanvas: true, scrollTable: false })"
               >
                 <td>{{ reviewIndex + 1 }}</td>
                 <td>{{ item.text }}</td>
@@ -420,6 +661,36 @@
                     {{ getScoreLabel(item.score) }}
                   </span>
                 </td>
+                <td>
+                  <span class="review-badge" :class="getReviewStatusClass(item._textIndex)">
+                    {{ getReviewStatusLabel(item._textIndex) }}
+                  </span>
+                </td>
+                <td>
+                  <div class="review-actions">
+                    <button
+                      class="status-action-btn"
+                      :class="{ active: getReviewStatus(item._textIndex) === 'unchecked' }"
+                      @click.stop="setReviewStatus(item._textIndex, 'unchecked')"
+                    >
+                      未检查
+                    </button>
+                    <button
+                      class="status-action-btn"
+                      :class="{ active: getReviewStatus(item._textIndex) === 'checked' }"
+                      @click.stop="setReviewStatus(item._textIndex, 'checked')"
+                    >
+                      已检查
+                    </button>
+                    <button
+                      class="status-action-btn"
+                      :class="{ active: getReviewStatus(item._textIndex) === 'needsReview' }"
+                      @click.stop="setReviewStatus(item._textIndex, 'needsReview')"
+                    >
+                      需复核
+                    </button>
+                  </div>
+                </td>                
               </tr>
             </tbody>
           </table>
@@ -461,7 +732,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { uploadImage } from "./api";
 
 const backendBase = "http://127.0.0.1:8000";
@@ -478,13 +749,23 @@ const logs = ref(["系统已启动，请先选择图片。"]);
 const uploadPercent = ref(0);
 const dragActive = ref(false);
 const showOverlayText = ref(true);
+const showHelpModal = ref(false);
 
 const confidenceThreshold = ref(0.3);
 const activeTab = ref("result");
 const hoveredResultIndex = ref(null);
 const focusedResultIndex = ref(null);
 const resultRowRefs = ref([]);
-const reviewFilterMode = ref("all"); // all | low
+const reviewFilterMode = ref("all"); // all | low | high | unchecked | needsReview
+const reviewStatusMap = ref({});
+
+const selectedResultIndexes = ref([]);
+const selectionAnchorIndex = ref(null);
+
+const reviewStorageKey = computed(() => {
+  if (!file.value) return "";
+  return `ocr-review-state::${file.value.name}::${file.value.size}::${file.value.lastModified || 0}`;
+});
 
 const fileInputRef = ref(null);
 const topBarRef = ref(null);
@@ -500,6 +781,12 @@ const visImgRef = ref(null);
 
 const srcZoom = ref(1);
 const visZoom = ref(1);
+
+const srcZoomToast = ref(false);
+const visZoomToast = ref(false);
+
+let srcZoomToastTimer = null;
+let visZoomToastTimer = null;
 
 const srcMeta = ref({
   naturalWidth: 0,
@@ -527,7 +814,12 @@ const panState = ref({
 let currentObjectUrl = "";
 
 const filteredTexts = computed(() => {
-  return texts.value.filter(item => Number(item.score || 0) >= confidenceThreshold.value);
+  return texts.value
+    .map((item, index) => ({
+      ...item,
+      _textIndex: index
+    }))
+    .filter(item => Number(item.score || 0) >= confidenceThreshold.value);
 });
 
 const reviewItems = computed(() => {
@@ -540,6 +832,18 @@ const reviewItems = computed(() => {
     return base.filter(item => Number(item.score || 0) < LOW_CONFIDENCE_CUTOFF);
   }
 
+  if (reviewFilterMode.value === "high") {
+    return base.filter(item => Number(item.score || 0) >= 0.9);
+  }
+
+  if (reviewFilterMode.value === "unchecked") {
+    return base.filter(item => getReviewStatus(item._textIndex) === "unchecked");
+  }
+
+  if (reviewFilterMode.value === "needsReview") {
+    return base.filter(item => getReviewStatus(item._textIndex) === "needsReview");
+  }
+
   return base;
 });
 
@@ -549,8 +853,60 @@ const lowConfidenceFilteredIndexes = computed(() => {
     .filter(index => index !== null);
 });
 
+const highConfidenceFilteredIndexes = computed(() => {
+  return filteredTexts.value
+    .map((item, index) => (Number(item.score || 0) >= 0.9 ? index : null))
+    .filter(index => index !== null);
+});
+
+const allFilteredIndexes = computed(() => {
+  return filteredTexts.value.map((_, index) => index);
+});
+
+const currentAllNavIndex = computed(() => {
+  return allFilteredIndexes.value.indexOf(focusedResultIndex.value);
+});
+
 const currentLowConfidenceNavIndex = computed(() => {
   return lowConfidenceFilteredIndexes.value.indexOf(focusedResultIndex.value);
+});
+
+const currentReviewNavIndex = computed(() => {
+  return reviewItems.value.findIndex(
+    item => item._filteredIndex === focusedResultIndex.value
+  );
+});
+
+const uncheckedCount = computed(() => {
+  return filteredTexts.value.filter(
+    item => getReviewStatus(item._textIndex) === "unchecked"
+  ).length;
+});
+
+const needsReviewFilteredIndexes = computed(() => {
+  return filteredTexts.value
+    .map((item, index) => (getReviewStatus(item._textIndex) === "needsReview" ? index : null))
+    .filter(index => index !== null);
+});
+
+const currentNeedsReviewNavIndex = computed(() => {
+  return needsReviewFilteredIndexes.value.indexOf(focusedResultIndex.value);
+});
+
+const needsReviewCount = computed(() => {
+  return filteredTexts.value.filter(
+    item => getReviewStatus(item._textIndex) === "needsReview"
+  ).length;
+});
+
+const selectedReviewItems = computed(() => {
+  return reviewItems.value.filter(item =>
+    selectedResultIndexes.value.includes(item._filteredIndex)
+  );
+});
+
+const effectiveBulkItems = computed(() => {
+  return selectedReviewItems.value.length ? selectedReviewItems.value : reviewItems.value;
 });
 
 const mergedText = computed(() => {
@@ -614,9 +970,104 @@ const resultTipClass = computed(() => {
   return "success";
 });
 
+function persistReviewState() {
+  if (!reviewStorageKey.value) return;
+
+  try {
+    localStorage.setItem(
+      reviewStorageKey.value,
+      JSON.stringify({
+        reviewStatusMap: reviewStatusMap.value,
+        reviewFilterMode: reviewFilterMode.value
+      })
+    );
+  } catch (error) {
+    console.error("保存复核状态失败：", error);
+  }
+}
+
+function loadPersistedReviewState() {
+  if (!reviewStorageKey.value) return;
+
+  try {
+    const raw = localStorage.getItem(reviewStorageKey.value);
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw);
+
+    reviewStatusMap.value =
+      parsed?.reviewStatusMap && typeof parsed.reviewStatusMap === "object"
+        ? parsed.reviewStatusMap
+        : {};
+
+    if (
+      ["all", "low", "high", "unchecked", "needsReview"].includes(parsed?.reviewFilterMode)
+    ) {
+      reviewFilterMode.value = parsed.reviewFilterMode;
+    }
+  } catch (error) {
+    console.error("读取复核状态失败：", error);
+  }
+}
+
+watch(
+  reviewStatusMap,
+  () => {
+    persistReviewState();
+  },
+  { deep: true }
+);
+
+watch(reviewFilterMode, () => {
+  persistReviewState();
+});
+
+watch(
+  filteredTexts,
+  (newList) => {
+    const validIndexes = new Set(newList.map((_, index) => index));
+
+    selectedResultIndexes.value = selectedResultIndexes.value.filter(index =>
+      validIndexes.has(index)
+    );
+
+    if (
+      selectionAnchorIndex.value !== null &&
+      !validIndexes.has(selectionAnchorIndex.value)
+    ) {
+      selectionAnchorIndex.value = selectedResultIndexes.value.length
+        ? selectedResultIndexes.value[selectedResultIndexes.value.length - 1]
+        : null;
+    }
+
+    if (
+      focusedResultIndex.value !== null &&
+      !validIndexes.has(focusedResultIndex.value)
+    ) {
+      focusedResultIndex.value = null;
+    }
+
+    if (
+      hoveredResultIndex.value !== null &&
+      !validIndexes.has(hoveredResultIndex.value)
+    ) {
+      hoveredResultIndex.value = null;
+    }
+  },
+  { deep: true }
+);
+
 function addLog(message) {
   const time = new Date().toLocaleTimeString();
   logs.value.unshift(`[${time}] ${message}`);
+}
+
+function openHelpModal() {
+  showHelpModal.value = true;
+}
+
+function closeHelpModal() {
+  showHelpModal.value = false;
 }
 
 function triggerFileSelect() {
@@ -646,6 +1097,11 @@ function setSelectedFile(selected) {
   hoveredResultIndex.value = null;
   resultRowRefs.value = [];
   reviewFilterMode.value = "all";
+  reviewStatusMap.value = {};
+  selectedResultIndexes.value = [];
+  selectionAnchorIndex.value = null;
+
+  loadPersistedReviewState();
 
   srcZoom.value = 1;
   visZoom.value = 1;
@@ -711,6 +1167,9 @@ function clearAll() {
   hoveredResultIndex.value = null;
   resultRowRefs.value = [];
   reviewFilterMode.value = "all";
+  reviewStatusMap.value = {};
+  selectedResultIndexes.value = [];
+  selectionAnchorIndex.value = null;
 
   srcZoom.value = 1;
   visZoom.value = 1;
@@ -758,6 +1217,11 @@ async function startOCR() {
     hoveredResultIndex.value = null;
     resultRowRefs.value = [];
     reviewFilterMode.value = "all";
+    reviewStatusMap.value = {};
+    selectedResultIndexes.value = [];
+    selectionAnchorIndex.value = null;
+
+    loadPersistedReviewState();
 
     await nextTick();
     setTimeout(() => fitToShell("vis"), 30);
@@ -808,6 +1272,68 @@ function exportTxt() {
   addLog("已导出 TXT 结果文件。");
 }
 
+function escapeCsvCell(value) {
+  const text = String(value ?? "");
+  if (/[",\n]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+  return text;
+}
+
+function exportCsv() {
+  if (!reviewItems.value.length) return;
+
+  const header = ["序号", "文本", "置信度", "质量等级", "是否低置信度", "检查状态"];
+  const rows = reviewItems.value.map((item, idx) => [
+    idx + 1,
+    item.text,
+    Number(item.score || 0).toFixed(4),
+    getScoreLabel(item.score),
+    Number(item.score || 0) < LOW_CONFIDENCE_CUTOFF ? "是" : "否",
+    getReviewStatusLabel(item._textIndex)
+  ]);
+
+  const csvText =
+    "\ufeff" +
+    [header, ...rows]
+      .map(row => row.map(cell => escapeCsvCell(cell)).join(","))
+      .join("\n");
+
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  const baseName = fileName.value ? fileName.value.replace(/\.[^.]+$/, "") : "ocr_result";
+  const suffix = reviewFilterMode.value === "low"
+    ? "low_confidence"
+    : reviewFilterMode.value === "high"
+    ? "high_confidence"
+    : reviewFilterMode.value === "unchecked"
+    ? "unchecked"
+    : reviewFilterMode.value === "needsReview"
+    ? "needs_review"
+    : "all_results";
+
+  a.href = url;
+  a.download = `${baseName}_${suffix}.csv`;
+  a.click();
+
+  URL.revokeObjectURL(url);
+  addLog(
+    `已导出 CSV 结果文件（${
+      reviewFilterMode.value === "low"
+        ? "仅低置信度"
+        : reviewFilterMode.value === "high"
+        ? "仅高置信度"
+        : reviewFilterMode.value === "unchecked"
+        ? "仅未检查"
+        : reviewFilterMode.value === "needsReview"
+        ? "仅需复核"
+        : "全部结果"
+    }）。`
+  );
+}
+
 function toggleOverlayText() {
   showOverlayText.value = !showOverlayText.value;
   addLog(showOverlayText.value ? "已显示检测框文字层。" : "已隐藏检测框文字层。");
@@ -825,6 +1351,112 @@ function getScoreClass(score) {
   if (s >= 0.9) return "high";
   if (s >= LOW_CONFIDENCE_CUTOFF) return "mid";
   return "low";
+}
+
+function getReviewStatus(textIndex) {
+  return reviewStatusMap.value[textIndex] || "unchecked";
+}
+
+function setReviewStatus(textIndex, status) {
+  reviewStatusMap.value = {
+    ...reviewStatusMap.value,
+    [textIndex]: status
+  };
+}
+
+function getReviewStatusLabel(textIndex) {
+  const status = getReviewStatus(textIndex);
+  if (status === "checked") return "已检查";
+  if (status === "needsReview") return "需复核";
+  return "未检查";
+}
+
+function getReviewStatusClass(textIndex) {
+  const status = getReviewStatus(textIndex);
+  if (status === "checked") return "checked";
+  if (status === "needsReview") return "needs-review";
+  return "unchecked";
+}
+
+function isResultSelected(filteredIndex) {
+  return selectedResultIndexes.value.includes(filteredIndex);
+}
+
+function clearSelectedResults() {
+  selectedResultIndexes.value = [];
+  selectionAnchorIndex.value = null;
+}
+
+function setSingleSelection(filteredIndex) {
+  selectedResultIndexes.value = [filteredIndex];
+  selectionAnchorIndex.value = filteredIndex;
+}
+
+function toggleResultSelection(filteredIndex) {
+  const set = new Set(selectedResultIndexes.value);
+
+  if (set.has(filteredIndex)) {
+    set.delete(filteredIndex);
+  } else {
+    set.add(filteredIndex);
+  }
+
+  selectedResultIndexes.value = Array.from(set).sort((a, b) => a - b);
+  selectionAnchorIndex.value = filteredIndex;
+}
+
+function selectRangeTo(filteredIndex, append = false) {
+  const visibleIndexes = reviewItems.value.map(item => item._filteredIndex);
+  if (!visibleIndexes.length) return;
+
+  let anchor = selectionAnchorIndex.value;
+
+  if (anchor === null || !visibleIndexes.includes(anchor)) {
+    if (
+      focusedResultIndex.value !== null &&
+      visibleIndexes.includes(focusedResultIndex.value)
+    ) {
+      anchor = focusedResultIndex.value;
+    } else {
+      anchor = visibleIndexes[0];
+    }
+  }
+
+  const start = visibleIndexes.indexOf(anchor);
+  const end = visibleIndexes.indexOf(filteredIndex);
+
+  if (start === -1 || end === -1) {
+    selectedResultIndexes.value = append
+      ? Array.from(new Set([...selectedResultIndexes.value, filteredIndex])).sort((a, b) => a - b)
+      : [filteredIndex];
+    selectionAnchorIndex.value = filteredIndex;
+    return;
+  }
+
+  const [from, to] = start < end ? [start, end] : [end, start];
+  const rangeIndexes = visibleIndexes.slice(from, to + 1);
+
+  selectedResultIndexes.value = append
+    ? Array.from(new Set([...selectedResultIndexes.value, ...rangeIndexes])).sort((a, b) => a - b)
+    : rangeIndexes;
+
+  selectionAnchorIndex.value = anchor;
+}
+
+function handleResultSelection(filteredIndex, event, options = {}) {
+  const { scrollCanvas = true, scrollTable = false } = options;
+  const isCtrlLike = event.ctrlKey || event.metaKey;
+  const isShift = event.shiftKey;
+
+  if (isShift) {
+    selectRangeTo(filteredIndex, isCtrlLike);
+  } else if (isCtrlLike) {
+    toggleResultSelection(filteredIndex);
+  } else {
+    setSingleSelection(filteredIndex);
+  }
+
+  focusResult(filteredIndex, { scrollCanvas, scrollTable });
 }
 
 function focusLowConfidenceByOffset(step = 1) {
@@ -849,6 +1481,213 @@ function focusNextLowConfidence() {
 
 function focusPrevLowConfidence() {
   focusLowConfidenceByOffset(-1);
+}
+
+function focusAllByOffset(step = 1) {
+  const indexes = allFilteredIndexes.value;
+  if (!indexes.length) return;
+
+  const currentPos = indexes.indexOf(focusedResultIndex.value);
+  let targetPos = 0;
+
+  if (currentPos === -1) {
+    targetPos = step > 0 ? 0 : indexes.length - 1;
+  } else {
+    targetPos = (currentPos + step + indexes.length) % indexes.length;
+  }
+
+  focusResult(indexes[targetPos], { scrollCanvas: true, scrollTable: true });
+}
+
+function focusNextAll() {
+  focusAllByOffset(1);
+}
+
+function focusPrevAll() {
+  focusAllByOffset(-1);
+}
+
+function focusNeedsReviewByOffset(step = 1) {
+  const indexes = needsReviewFilteredIndexes.value;
+  if (!indexes.length) return;
+
+  const currentPos = indexes.indexOf(focusedResultIndex.value);
+  let targetPos = 0;
+
+  if (currentPos === -1) {
+    targetPos = step > 0 ? 0 : indexes.length - 1;
+  } else {
+    targetPos = (currentPos + step + indexes.length) % indexes.length;
+  }
+
+  focusResult(indexes[targetPos], { scrollCanvas: true, scrollTable: true });
+}
+
+function focusNextNeedsReview() {
+  focusNeedsReviewByOffset(1);
+}
+
+function focusPrevNeedsReview() {
+  focusNeedsReviewByOffset(-1);
+}
+
+function getActiveTargetFilteredIndex() {
+  if (
+    focusedResultIndex.value !== null &&
+    focusedResultIndex.value >= 0 &&
+    filteredTexts.value[focusedResultIndex.value]
+  ) {
+    return focusedResultIndex.value;
+  }
+
+  if (
+    hoveredResultIndex.value !== null &&
+    hoveredResultIndex.value >= 0 &&
+    filteredTexts.value[hoveredResultIndex.value]
+  ) {
+    return hoveredResultIndex.value;
+  }
+
+  if (reviewItems.value.length) {
+    return reviewItems.value[0]._filteredIndex;
+  }
+
+  if (filteredTexts.value.length) {
+    return 0;
+  }
+
+  return -1;
+}
+
+function applyReviewStatusByShortcut(status) {
+  const targetFilteredIndex = getActiveTargetFilteredIndex();
+  if (targetFilteredIndex < 0) return;
+
+  const targetItem = filteredTexts.value[targetFilteredIndex];
+  if (!targetItem) return;
+
+  focusedResultIndex.value = targetFilteredIndex;
+  setReviewStatus(targetItem._textIndex, status);
+  focusResult(targetFilteredIndex, { scrollCanvas: true, scrollTable: true });
+}
+
+function applyBulkReviewStatus(status) {
+  const targets = effectiveBulkItems.value;
+  if (!targets.length) return;
+
+  const nextMap = { ...reviewStatusMap.value };
+
+  targets.forEach(item => {
+    nextMap[item._textIndex] = status;
+  });
+
+  reviewStatusMap.value = nextMap;
+
+  const statusLabel =
+    status === "checked"
+      ? "已检查"
+      : status === "needsReview"
+      ? "需复核"
+      : "未检查";
+
+  const targetLabel = selectedReviewItems.value.length
+    ? `选中的 ${selectedReviewItems.value.length}`
+    : `当前筛选结果 ${reviewItems.value.length}`;
+
+  addLog(`已将${targetLabel} 条记录批量标记为“${statusLabel}”。`);
+}
+
+function shouldIgnoreShortcut(event) {
+  const el = event.target;
+  if (!el) return false;
+
+  const tagName = el.tagName?.toLowerCase();
+  return (
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select" ||
+    el.isContentEditable
+  );
+}
+
+function handleKeydown(event) {
+  const key = event.key.toLowerCase();
+
+  if (showHelpModal.value) {
+    if (key === "escape") {
+      event.preventDefault();
+      closeHelpModal();
+    }
+    return;
+  }
+
+  if (loading.value) return;
+  if (shouldIgnoreShortcut(event)) return;
+
+  switch (key) {
+    case "a":
+      event.preventDefault();
+      focusPrevAll();
+      break;
+    case "d":
+      event.preventDefault();
+      focusNextAll();
+      break;
+    case "z":
+      event.preventDefault();
+      focusPrevLowConfidence();
+      break;
+    case "c":
+      event.preventDefault();
+      focusNextLowConfidence();
+      break;
+    case "j":
+      event.preventDefault();
+      focusPrevNeedsReview();
+      break;
+    case "l":
+      event.preventDefault();
+      focusNextNeedsReview();
+      break;
+    case "1":
+      event.preventDefault();
+      applyReviewStatusByShortcut("unchecked");
+      break;
+    case "2":
+      event.preventDefault();
+      applyReviewStatusByShortcut("checked");
+      break;
+    case "3":
+      event.preventDefault();
+      applyReviewStatusByShortcut("needsReview");
+      break;
+    case "q":
+      event.preventDefault();
+      reviewFilterMode.value = "all";
+      break;
+    case "f":
+      event.preventDefault();
+      reviewFilterMode.value = "low";
+      break;
+    case "t":
+      event.preventDefault();
+      reviewFilterMode.value = "high";
+      break;
+    case "w":
+      event.preventDefault();
+      reviewFilterMode.value = "unchecked";
+      break;
+    case "e":
+      event.preventDefault();
+      reviewFilterMode.value = "needsReview";
+      break;
+    case "r":
+      event.preventDefault();
+      if (visUrl.value) resetZoom("vis");
+      break;
+    default:
+      break;
+  }
 }
 
 function getShell(kind) {
@@ -891,33 +1730,78 @@ function endPan() {
   document.body.style.userSelect = "";
 }
 
+function showZoomToast(kind) {
+  const isSrc = kind === "src";
+  const toastRef = isSrc ? srcZoomToast : visZoomToast;
+
+  toastRef.value = true;
+
+  if (isSrc) {
+    if (srcZoomToastTimer) clearTimeout(srcZoomToastTimer);
+    srcZoomToastTimer = setTimeout(() => {
+      srcZoomToast.value = false;
+    }, 800);
+  } else {
+    if (visZoomToastTimer) clearTimeout(visZoomToastTimer);
+    visZoomToastTimer = setTimeout(() => {
+      visZoomToast.value = false;
+    }, 800);
+  }
+}
+
 function changeZoom(kind, delta) {
+  if (kind === "src" && !imagePreview.value) return;
+  if (kind === "vis" && !visUrl.value) return;
+
   const { shell, meta, zoomRef } = getShellAndMeta(kind);
+  const img = kind === "src" ? srcImgRef.value : visImgRef.value;
+
   const prevZoom = zoomRef.value;
   const nextZoom = clampZoom(prevZoom + delta);
 
   if (nextZoom === prevZoom) return;
 
-  if (!shell || !meta.baseWidth || !meta.baseHeight) {
-    zoomRef.value = nextZoom;
+  if (!shell || !meta.baseWidth || !meta.baseHeight || !img) {
     return;
   }
 
-  const centerX = shell.scrollLeft + shell.clientWidth / 2;
-  const centerY = shell.scrollTop + shell.clientHeight / 2;
-  const ratio = nextZoom / prevZoom;
+  const shellRect = shell.getBoundingClientRect();
+  const imgRect = img.getBoundingClientRect();
+
+  const focusClientX = shellRect.left + shell.clientWidth / 2;
+  const focusClientY = shellRect.top + shell.clientHeight / 2;
+
+  const rawRatioX = imgRect.width
+    ? (focusClientX - imgRect.left) / imgRect.width
+    : 0.5;
+  const rawRatioY = imgRect.height
+    ? (focusClientY - imgRect.top) / imgRect.height
+    : 0.5;
+
+  const ratioX = Math.min(1, Math.max(0, rawRatioX));
+  const ratioY = Math.min(1, Math.max(0, rawRatioY));
 
   zoomRef.value = nextZoom;
+  showZoomToast(kind);
 
   nextTick(() => {
-    shell.scrollLeft = Math.max(centerX * ratio - shell.clientWidth / 2, 0);
-    shell.scrollTop = Math.max(centerY * ratio - shell.clientHeight / 2, 0);
+    const newImg = kind === "src" ? srcImgRef.value : visImgRef.value;
+    if (!shell || !newImg) return;
+
+    const newImgRect = newImg.getBoundingClientRect();
+
+    const newPointClientX = newImgRect.left + newImgRect.width * ratioX;
+    const newPointClientY = newImgRect.top + newImgRect.height * ratioY;
+
+    shell.scrollLeft += newPointClientX - focusClientX;
+    shell.scrollTop += newPointClientY - focusClientY;
   });
 }
 
 function resetZoom(kind) {
   const { zoomRef } = getShellAndMeta(kind);
   zoomRef.value = 1;
+  showZoomToast(kind);
 
   nextTick(() => {
     centerStage(kind);
@@ -929,6 +1813,9 @@ function clampZoom(value) {
 }
 
 function handleWheelZoom(kind, event) {
+  if (kind === "src" && !imagePreview.value) return;
+  if (kind === "vis" && !visUrl.value) return;
+
   const delta = event.deltaY < 0 ? 0.08 : -0.08;
   changeZoom(kind, delta);
 }
@@ -1126,6 +2013,7 @@ onMounted(() => {
   window.addEventListener("scroll", updateTopBarPin, { passive: true });
   window.addEventListener("mousemove", handlePanMove);
   window.addEventListener("mouseup", endPan);
+  window.addEventListener("keydown", handleKeydown);
 
   nextTick(() => {
     updateTopBarMetrics();
@@ -1139,6 +2027,10 @@ onBeforeUnmount(() => {
   window.removeEventListener("scroll", updateTopBarPin);
   window.removeEventListener("mousemove", handlePanMove);
   window.removeEventListener("mouseup", endPan);
+  window.removeEventListener("keydown", handleKeydown);
+
+  if (srcZoomToastTimer) clearTimeout(srcZoomToastTimer);
+  if (visZoomToastTimer) clearTimeout(visZoomToastTimer);
 
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
@@ -1202,6 +2094,14 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 24px rgba(31, 38, 135, 0.10);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-lite {
+  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 6px 16px rgba(31, 38, 135, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .loading-mask {
@@ -1328,6 +2228,8 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 28px rgba(31, 38, 135, 0.16);
   transition: padding 0.22s ease, border-radius 0.22s ease, box-shadow 0.22s ease, opacity 0.22s ease;
   will-change: transform, opacity;
+  overflow: visible;
+  z-index: 200;
 }
 
 .top-bar.pinned {
@@ -1407,6 +2309,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   align-items: stretch;
   flex-wrap: wrap;
+  overflow: visible;
 }
 
 .right-controls {
@@ -1451,6 +2354,7 @@ onBeforeUnmount(() => {
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
   cursor: pointer !important;
   overflow: visible;
+  z-index: 400;
 }
 
 .file-btn:hover:not(.disabled) {
@@ -1459,25 +2363,9 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.92);
 }
 
-.file-btn:hover::after {
-  content: attr(data-filename);
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 8px);
-  transform: translateX(-50%);
-  max-width: 320px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.92);
-  color: #fff;
-  font-size: 12px;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
-  z-index: 1200;
-  pointer-events: none;
+.file-btn:hover,
+.file-btn:focus-within {
+  z-index: 5000;
 }
 
 .file-btn:active:not(.disabled) {
@@ -1499,6 +2387,46 @@ onBeforeUnmount(() => {
 .file-btn.disabled * {
   cursor: not-allowed !important;
   opacity: 0.6;
+}
+
+.file-hover-name {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 10px);
+  min-width: max-content;
+  max-width: 560px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.96);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s ease;
+}
+
+.file-hover-name::before {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  background: rgba(15, 23, 42, 0.96);
+  transform: rotate(45deg);
+}
+
+.file-btn:hover .file-hover-name {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .hidden-file-input {
@@ -1676,6 +2604,11 @@ button:disabled {
   font-weight: 700;
 }
 
+.canvas-frame {
+  position: relative;
+  width: 100%;
+}
+
 .canvas-shell {
   height: 430px;
   width: 100%;
@@ -1688,6 +2621,25 @@ button:disabled {
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
+}
+
+.zoom-toast {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 12px 18px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.86);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+  z-index: 5000;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .canvas-shell.pannable,
@@ -1899,6 +2851,30 @@ button:disabled {
   border: 1px solid rgba(183, 235, 143, 0.85);
 }
 
+.summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.summary-chip {
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.summary-chip-label {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.summary-chip strong {
+  font-size: 16px;
+  color: #1e293b;
+}
+
 .review-filter-bar {
   display: flex;
   align-items: center;
@@ -2104,7 +3080,8 @@ tbody tr.active {
 
   .viewer-grid,
   .stats-row,
-  .mini-stats-row {
+  .mini-stats-row,
+  .summary-strip {
     grid-template-columns: 1fr;
   }
 
@@ -2117,5 +3094,274 @@ tbody tr.active {
   .hero h1 {
     font-size: 30px;
   }
+}
+
+.review-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.review-badge.unchecked {
+  background: rgba(241, 245, 249, 0.95);
+  color: #475569;
+}
+
+.review-badge.checked {
+  background: rgba(240, 253, 244, 0.95);
+  color: #15803d;
+}
+
+.review-badge.needs-review {
+  background: rgba(254, 226, 226, 0.95);
+  color: #dc2626;
+}
+
+.review-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-action-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.status-action-btn.active {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.16);
+}
+
+.shortcut-tip {
+  width: 100%;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.7;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, 0.7);
+  border: 1px dashed rgba(203, 213, 225, 0.9);
+}
+
+.help-trigger-btn {
+  color: #0f766e;
+  border-color: rgba(94, 234, 212, 0.9);
+}
+
+.help-modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.32);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 24px;
+}
+
+.help-modal {
+  width: min(920px, 100%);
+  max-height: min(82vh, 860px);
+  border-radius: 24px;
+  padding: 20px 20px 18px;
+  overflow: auto;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+}
+
+.help-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.help-modal-header h3 {
+  margin: 0;
+  font-size: 24px;
+  color: #1e293b;
+}
+
+.help-modal-header p {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.help-close-btn {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 22px;
+  line-height: 1;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(203, 213, 225, 0.9);
+}
+
+.help-modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.help-section {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(248, 250, 252, 0.72);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.help-section h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: #1e293b;
+}
+
+.help-kbd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px 14px;
+}
+
+.help-kbd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.help-kbd-item span {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.help-kbd-item kbd {
+  min-width: 34px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.16);
+}
+
+.help-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #475569;
+}
+
+.help-list li {
+  margin-bottom: 8px;
+  line-height: 1.8;
+}
+
+.help-list li:last-child {
+  margin-bottom: 0;
+}
+
+.batch-review-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+}
+
+.batch-review-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.batch-review-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.batch-review-desc {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.batch-review-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.batch-action-btn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.batch-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.danger-batch {
+  color: #dc2626;
+  border-color: rgba(252, 165, 165, 0.9);
+}
+
+.table-wrap tbody tr.selected {
+  background: rgba(99, 102, 241, 0.10);
+}
+
+.table-wrap tbody tr.selected td {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.table-wrap tbody tr.selected td:first-child {
+  box-shadow: inset 4px 0 0 rgba(99, 102, 241, 0.95);
+}
+
+.table-wrap tbody tr.selected.active {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.table-wrap tbody tr.selected.active td {
+  background: rgba(37, 99, 235, 0.10);
+}
+
+.selectable-box.selected {
+  box-shadow:
+    0 0 0 2px rgba(99, 102, 241, 0.45),
+    0 4px 12px rgba(99, 102, 241, 0.14);
+}
+
+.selectable-box.selected.active {
+  box-shadow:
+    0 0 0 2px rgba(37, 99, 235, 0.7),
+    0 6px 16px rgba(37, 99, 235, 0.18);
 }
 </style>

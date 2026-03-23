@@ -383,7 +383,7 @@
       </div>
       <div class="mini-card glass">
         <div class="mini-label">当前模型</div>
-        <div class="mini-value small-model">det_final_infer + rec_round6_infer</div>
+        <div class="mini-value small-model">{{ modelSummaryText }}</div>
       </div>
     </section>
 
@@ -453,6 +453,10 @@
             <div class="summary-chip glass-lite">
               <span class="summary-chip-label">需复核</span>
               <strong>{{ needsReviewCount }}</strong>
+            </div>
+            <div class="summary-chip glass-lite">
+              <span class="summary-chip-label">已修正</span>
+              <strong>{{ editedCount }}</strong>
             </div>
             <div class="summary-chip glass-lite">
               <span class="summary-chip-label">平均置信度</span>
@@ -630,11 +634,12 @@
             <thead>
               <tr>
                 <th style="width: 80px;">序号</th>
-                <th>文本</th>
+                <th>原始文本</th>
+                <th>复核修正</th>
                 <th style="width: 120px;">置信度</th>
                 <th style="width: 120px;">质量判断</th>
                 <th style="width: 120px;">检查状态</th>
-                <th style="width: 250px;">操作</th>
+                <th style="width: 280px;">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -654,7 +659,35 @@
                 @click="handleResultSelection(item._filteredIndex, $event, { scrollCanvas: true, scrollTable: false })"
               >
                 <td>{{ reviewIndex + 1 }}</td>
-                <td>{{ item.text }}</td>
+                <td>
+                  <div class="raw-text-cell">{{ item.text }}</div>
+                </td>
+                <td>
+                  <div class="edit-cell">
+                    <textarea
+                      class="review-edit-input"
+                      :value="getEditedText(item._textIndex)"
+                      placeholder="输入复核后的文本；留空时默认使用原始识别结果"
+                      @click.stop
+                      @input="setEditedText(item._textIndex, $event.target.value)"
+                    ></textarea>
+                    <div class="edit-cell-meta">
+                      <span
+                        class="edit-indicator"
+                        :class="{ edited: isTextEdited(item._textIndex, item.text) }"
+                      >
+                        {{ isTextEdited(item._textIndex, item.text) ? "已修正" : "未修正" }}
+                      </span>
+                      <button
+                        class="inline-link-btn"
+                        @click.stop="resetEditedText(item._textIndex)"
+                        :disabled="!getEditedText(item._textIndex)"
+                      >
+                        恢复原文
+                      </button>
+                    </div>
+                  </div>
+                </td>
                 <td>{{ Number(item.score).toFixed(4) }}</td>
                 <td>
                   <span class="score-badge" :class="getScoreClass(item.score)">
@@ -713,11 +746,25 @@
       <!-- 模型说明 -->
       <template v-else-if="activeTab === 'model'">
         <div class="model-desc">
-          <p><strong>检测模型：</strong>PP-OCRv5_mobile_det 微调版</p>
-          <p><strong>识别模型：</strong>PP-OCRv5_mobile_rec 微调版</p>
+          <p><strong>检测模型：</strong>{{ currentModel.det_model_name }}</p>
+          <p><strong>检测目录：</strong>{{ currentModel.det_model_dir }}</p>
+          <p><strong>识别模型：</strong>{{ currentModel.rec_model_name }}</p>
+          <p><strong>识别目录：</strong>{{ currentModel.rec_model_dir }}</p>
+          <p><strong>运行设备：</strong>{{ currentModel.device }}</p>
+          <p><strong>语言：</strong>{{ currentModel.lang }}</p>
+          <p><strong>识别输入尺寸：</strong>{{ modelShapeText }}</p>
           <p><strong>部署方式：</strong>FastAPI + Vue 前后端分离</p>
           <p><strong>适用场景：</strong>教材页面、截图文字、单行文字、表格类文本的检测与识别演示</p>
-          <p><strong>前端增强：</strong>支持拖拽上传、Ctrl+V 粘贴、缩放查看、阈值过滤、框中文字显示/隐藏。</p>
+          <p>
+            <strong>方向增强：</strong>
+            文档方向分类 {{ currentModel.use_doc_orientation_classify ? "开启" : "关闭" }}，
+            文档矫正 {{ currentModel.use_doc_unwarping ? "开启" : "关闭" }}，
+            文本行方向 {{ currentModel.use_textline_orientation ? "开启" : "关闭" }}。
+          </p>
+          <p><strong>前端增强：</strong>支持拖拽上传、Ctrl+V 粘贴、缩放查看、阈值过滤、框中文字显示/隐藏、复核修正编辑。</p>
+          <p v-if="modelInfoLoading"><strong>模型状态：</strong>正在同步后端模型信息...</p>
+          <p v-else-if="modelInfoError"><strong>模型状态：</strong>{{ modelInfoError }}</p>
+          <p v-else><strong>模型状态：</strong>已与后端配置同步。</p>
         </div>
       </template>
 
@@ -733,10 +780,11 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { uploadImage } from "./api";
+import { uploadImage, getModelInfo } from "./api";
 
 const backendBase = "http://127.0.0.1:8000";
 const LOW_CONFIDENCE_CUTOFF = 0.6;
+const MODEL_INFO_REFRESH_MS = 15000;
 
 const file = ref(null);
 const fileName = ref("");
@@ -758,6 +806,21 @@ const focusedResultIndex = ref(null);
 const resultRowRefs = ref([]);
 const reviewFilterMode = ref("all"); // all | low | high | unchecked | needsReview
 const reviewStatusMap = ref({});
+const reviewEditMap = ref({});
+const modelInfoLoading = ref(false);
+const modelInfoError = ref("");
+const currentModel = ref({
+  device: "-",
+  lang: "-",
+  det_model_name: "-",
+  det_model_dir: "-",
+  rec_model_name: "-",
+  rec_model_dir: "-",
+  text_rec_input_shape: [],
+  use_doc_orientation_classify: false,
+  use_doc_unwarping: false,
+  use_textline_orientation: false
+});
 
 const selectedResultIndexes = ref([]);
 const selectionAnchorIndex = ref(null);
@@ -812,6 +875,7 @@ const panState = ref({
 });
 
 let currentObjectUrl = "";
+let modelInfoTimer = null;
 
 const filteredTexts = computed(() => {
   return texts.value
@@ -909,8 +973,33 @@ const effectiveBulkItems = computed(() => {
   return selectedReviewItems.value.length ? selectedReviewItems.value : reviewItems.value;
 });
 
+const editedCount = computed(() => {
+  return filteredTexts.value.filter(item => isTextEdited(item._textIndex, item.text)).length;
+});
+
 const mergedText = computed(() => {
-  return filteredTexts.value.map(item => item.text).join("\n");
+  return filteredTexts.value.map(item => getFinalText(item._textIndex, item.text)).join("\n");
+});
+
+const modelSummaryText = computed(() => {
+  const det = currentModel.value.det_model_name || currentModel.value.det_model_dir || "-";
+  const rec = currentModel.value.rec_model_name || currentModel.value.rec_model_dir || "-";
+
+  if (modelInfoLoading.value) {
+    return "模型信息同步中...";
+  }
+
+  if (modelInfoError.value) {
+    return "模型信息读取失败";
+  }
+
+  return `${det} + ${rec}`;
+});
+
+const modelShapeText = computed(() => {
+  return currentModel.value.text_rec_input_shape?.length
+    ? currentModel.value.text_rec_input_shape.join(" × ")
+    : "-";
 });
 
 const elapsedText = computed(() => {
@@ -970,6 +1059,32 @@ const resultTipClass = computed(() => {
   return "success";
 });
 
+async function fetchCurrentModelInfo(showLog = false) {
+  modelInfoLoading.value = true;
+  modelInfoError.value = "";
+
+  try {
+    const res = await getModelInfo();
+    if (res.data?.code === 0 && res.data?.data) {
+      currentModel.value = {
+        ...currentModel.value,
+        ...res.data.data
+      };
+
+      if (showLog) {
+        addLog(`已同步当前模型：${res.data.data.det_model_name} + ${res.data.data.rec_model_name}`);
+      }
+    } else {
+      modelInfoError.value = "后端未返回有效的模型信息。";
+    }
+  } catch (error) {
+    console.error("读取模型信息失败：", error);
+    modelInfoError.value = "无法连接后端读取模型信息。";
+  } finally {
+    modelInfoLoading.value = false;
+  }
+}
+
 function persistReviewState() {
   if (!reviewStorageKey.value) return;
 
@@ -978,6 +1093,7 @@ function persistReviewState() {
       reviewStorageKey.value,
       JSON.stringify({
         reviewStatusMap: reviewStatusMap.value,
+        reviewEditMap: reviewEditMap.value,
         reviewFilterMode: reviewFilterMode.value
       })
     );
@@ -1000,6 +1116,11 @@ function loadPersistedReviewState() {
         ? parsed.reviewStatusMap
         : {};
 
+    reviewEditMap.value =
+      parsed?.reviewEditMap && typeof parsed.reviewEditMap === "object"
+        ? parsed.reviewEditMap
+        : {};
+
     if (
       ["all", "low", "high", "unchecked", "needsReview"].includes(parsed?.reviewFilterMode)
     ) {
@@ -1012,6 +1133,14 @@ function loadPersistedReviewState() {
 
 watch(
   reviewStatusMap,
+  () => {
+    persistReviewState();
+  },
+  { deep: true }
+);
+
+watch(
+  reviewEditMap,
   () => {
     persistReviewState();
   },
@@ -1098,6 +1227,7 @@ function setSelectedFile(selected) {
   resultRowRefs.value = [];
   reviewFilterMode.value = "all";
   reviewStatusMap.value = {};
+  reviewEditMap.value = {};
   selectedResultIndexes.value = [];
   selectionAnchorIndex.value = null;
 
@@ -1168,6 +1298,7 @@ function clearAll() {
   resultRowRefs.value = [];
   reviewFilterMode.value = "all";
   reviewStatusMap.value = {};
+  reviewEditMap.value = {};
   selectedResultIndexes.value = [];
   selectionAnchorIndex.value = null;
 
@@ -1218,6 +1349,7 @@ async function startOCR() {
     resultRowRefs.value = [];
     reviewFilterMode.value = "all";
     reviewStatusMap.value = {};
+    reviewEditMap.value = {};
     selectedResultIndexes.value = [];
     selectionAnchorIndex.value = null;
 
@@ -1283,10 +1415,12 @@ function escapeCsvCell(value) {
 function exportCsv() {
   if (!reviewItems.value.length) return;
 
-  const header = ["序号", "文本", "置信度", "质量等级", "是否低置信度", "检查状态"];
+  const header = ["序号", "原始文本", "复核修正", "最终文本", "置信度", "质量等级", "是否低置信度", "检查状态"];
   const rows = reviewItems.value.map((item, idx) => [
     idx + 1,
     item.text,
+    getEditedText(item._textIndex),
+    getFinalText(item._textIndex, item.text),
     Number(item.score || 0).toFixed(4),
     getScoreLabel(item.score),
     Number(item.score || 0) < LOW_CONFIDENCE_CUTOFF ? "是" : "否",
@@ -1355,6 +1489,37 @@ function getScoreClass(score) {
 
 function getReviewStatus(textIndex) {
   return reviewStatusMap.value[textIndex] || "unchecked";
+}
+
+function getEditedText(textIndex) {
+  return reviewEditMap.value[textIndex] || "";
+}
+
+function getFinalText(textIndex, originalText) {
+  const editedText = getEditedText(textIndex).trim();
+  return editedText || originalText;
+}
+
+function isTextEdited(textIndex, originalText) {
+  const editedText = getEditedText(textIndex).trim();
+  return !!editedText && editedText !== originalText;
+}
+
+function setEditedText(textIndex, value) {
+  reviewEditMap.value = {
+    ...reviewEditMap.value,
+    [textIndex]: value
+  };
+
+  if (value.trim() && getReviewStatus(textIndex) === "unchecked") {
+    setReviewStatus(textIndex, "needsReview");
+  }
+}
+
+function resetEditedText(textIndex) {
+  const nextMap = { ...reviewEditMap.value };
+  delete nextMap[textIndex];
+  reviewEditMap.value = nextMap;
 }
 
 function setReviewStatus(textIndex, status) {
@@ -2015,6 +2180,11 @@ onMounted(() => {
   window.addEventListener("mouseup", endPan);
   window.addEventListener("keydown", handleKeydown);
 
+  fetchCurrentModelInfo();
+  modelInfoTimer = window.setInterval(() => {
+    fetchCurrentModelInfo();
+  }, MODEL_INFO_REFRESH_MS);
+
   nextTick(() => {
     updateTopBarMetrics();
     updateTopBarPin();
@@ -2031,6 +2201,7 @@ onBeforeUnmount(() => {
 
   if (srcZoomToastTimer) clearTimeout(srcZoomToastTimer);
   if (visZoomToastTimer) clearTimeout(visZoomToastTimer);
+  if (modelInfoTimer) clearInterval(modelInfoTimer);
 
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
@@ -3150,6 +3321,71 @@ tbody tr.active {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+
+.raw-text-cell {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  color: #0f172a;
+}
+
+.edit-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.review-edit-input {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(191, 219, 254, 0.9);
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.6;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.review-edit-input:focus {
+  border-color: rgba(37, 99, 235, 0.9);
+  box-shadow: 0 0 0 3px rgba(191, 219, 254, 0.55);
+}
+
+.edit-cell-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.edit-indicator {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.edit-indicator.edited {
+  color: #2563eb;
+}
+
+.inline-link-btn {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inline-link-btn:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 .status-action-btn {

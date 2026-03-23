@@ -22,3 +22,7 @@ export function uploadImage(file, onProgress) {
     }
   });
 }
+
+export function getModelInfo() {
+  return request.get("/api/model/info");
+}

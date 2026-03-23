@@ -39,6 +39,15 @@ def health() -> dict:
     return {"code": 0, "message": "ok"}
 
 
+@app.get("/api/model/info")
+def model_info() -> dict:
+    return {
+        "code": 0,
+        "message": "success",
+        "data": ocr_service.get_model_info(),
+    }
+
+
 @app.post("/api/ocr/image")
 async def ocr_image(file: UploadFile = File(...)) -> dict:
     suffix = Path(file.filename).suffix.lower()

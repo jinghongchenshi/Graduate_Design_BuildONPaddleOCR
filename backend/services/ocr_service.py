@@ -36,6 +36,21 @@ class OCRService:
         self.cfg = self._load_config(self.config_path)
         self.ocr = self._build_ocr()
 
+    def get_model_info(self) -> dict[str, Any]:
+        ocr_cfg = self.cfg["ocr"]
+        return {
+            "device": ocr_cfg["device"],
+            "lang": ocr_cfg["lang"],
+            "det_model_name": ocr_cfg["text_detection_model_name"],
+            "det_model_dir": ocr_cfg["text_detection_model_dir"],
+            "rec_model_name": ocr_cfg["text_recognition_model_name"],
+            "rec_model_dir": ocr_cfg["text_recognition_model_dir"],
+            "text_rec_input_shape": list(ocr_cfg["text_rec_input_shape"]),
+            "use_doc_orientation_classify": ocr_cfg["use_doc_orientation_classify"],
+            "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
+            "use_textline_orientation": ocr_cfg["use_textline_orientation"],
+        }
+
     def _draw_boxes_only(self, image_path: str, boxes: list, vis_path: str) -> None:
         img = cv2.imread(image_path)
         if img is None:

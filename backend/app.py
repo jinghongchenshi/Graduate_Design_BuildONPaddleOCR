@@ -6,6 +6,7 @@ import yaml
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from services.ocr_service import OCRService
 from utils.file_utils import ensure_dir, unique_filename
@@ -34,9 +35,45 @@ app.mount("/uploads", StaticFiles(directory=upload_dir), name="uploads")
 app.mount("/results", StaticFiles(directory=result_dir), name="results")
 
 
+class ModelSelectRequest(BaseModel):
+    model_id: str
+
+
 @app.get("/api/health")
 def health() -> dict:
     return {"code": 0, "message": "ok"}
+
+
+@app.get("/api/model/info")
+def model_info() -> dict:
+    return {
+        "code": 0,
+        "message": "success",
+        "data": ocr_service.get_model_info(),
+    }
+
+
+@app.get("/api/model/options")
+def model_options() -> dict:
+    return {
+        "code": 0,
+        "message": "success",
+        "data": ocr_service.list_model_options(),
+    }
+
+
+@app.post("/api/model/select")
+def select_model(payload: ModelSelectRequest) -> dict:
+    try:
+        info = ocr_service.select_model(payload.model_id)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+    return {
+        "code": 0,
+        "message": "模型切换成功",
+        "data": info,
+    }
 
 
 @app.post("/api/ocr/image")

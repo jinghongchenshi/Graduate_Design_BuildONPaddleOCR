@@ -22,3 +22,17 @@ export function uploadImage(file, onProgress) {
     }
   });
 }
+
+export function getModelInfo() {
+  return request.get("/api/model/info");
+}
+
+export function getModelOptions() {
+  return request.get("/api/model/options");
+}
+
+export function selectModel(modelId) {
+  return request.post("/api/model/select", {
+    model_id: modelId
+  });
+}

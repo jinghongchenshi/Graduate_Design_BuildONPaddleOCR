@@ -17,6 +17,98 @@ class OCRService:
         with open(config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
 
+    def _save_config(self) -> None:
+        with open(self.config_path, "w", encoding="utf-8") as f:
+            yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+
+    def _get_current_model_payload(self) -> dict[str, Any]:
+        ocr_cfg = self.cfg["ocr"]
+        return {
+            "device": ocr_cfg["device"],
+            "lang": ocr_cfg["lang"],
+            "det_model_name": ocr_cfg["text_detection_model_name"],
+            "det_model_dir": ocr_cfg["text_detection_model_dir"],
+            "rec_model_name": ocr_cfg["text_recognition_model_name"],
+            "rec_model_dir": ocr_cfg["text_recognition_model_dir"],
+            "text_rec_input_shape": list(ocr_cfg["text_rec_input_shape"]),
+            "use_doc_orientation_classify": ocr_cfg["use_doc_orientation_classify"],
+            "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
+            "use_textline_orientation": ocr_cfg["use_textline_orientation"],
+        }
+
+    def list_model_options(self) -> list[dict[str, Any]]:
+        ocr_cfg = self.cfg["ocr"]
+        presets = ocr_cfg.get("model_presets", [])
+        active_model_id = ocr_cfg.get("active_model_id", "")
+
+        if not isinstance(presets, list) or not presets:
+            current = self._get_current_model_payload()
+            return [{
+                "id": "current",
+                "label": "当前配置模型",
+                "det_model_name": current["det_model_name"],
+                "det_model_dir": current["det_model_dir"],
+                "rec_model_name": current["rec_model_name"],
+                "rec_model_dir": current["rec_model_dir"],
+                "text_rec_input_shape": current["text_rec_input_shape"],
+                "active": True,
+            }]
+
+        result = []
+        for item in presets:
+            if not isinstance(item, dict):
+                continue
+
+            model_id = str(item.get("id") or "").strip()
+            if not model_id:
+                continue
+
+            result.append({
+                "id": model_id,
+                "label": str(item.get("label") or model_id),
+                "det_model_name": item.get("text_detection_model_name", ""),
+                "det_model_dir": item.get("text_detection_model_dir", ""),
+                "rec_model_name": item.get("text_recognition_model_name", ""),
+                "rec_model_dir": item.get("text_recognition_model_dir", ""),
+                "text_rec_input_shape": list(item.get("text_rec_input_shape", [])),
+                "active": model_id == active_model_id,
+            })
+
+        return result
+
+    def select_model(self, model_id: str) -> dict[str, Any]:
+        target = (model_id or "").strip()
+        if not target:
+            raise ValueError("模型 ID 不能为空")
+
+        ocr_cfg = self.cfg["ocr"]
+        presets = ocr_cfg.get("model_presets", [])
+        if not isinstance(presets, list) or not presets:
+            raise ValueError("当前未配置可切换模型，请先在 config.yaml 中添加 model_presets")
+
+        selected: dict[str, Any] | None = None
+        for item in presets:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("id") or "").strip() == target:
+                selected = item
+                break
+
+        if selected is None:
+            raise ValueError(f"未找到模型: {target}")
+
+        ocr_cfg["text_detection_model_name"] = selected.get("text_detection_model_name", ocr_cfg["text_detection_model_name"])
+        ocr_cfg["text_detection_model_dir"] = selected.get("text_detection_model_dir", ocr_cfg["text_detection_model_dir"])
+        ocr_cfg["text_recognition_model_name"] = selected.get("text_recognition_model_name", ocr_cfg["text_recognition_model_name"])
+        ocr_cfg["text_recognition_model_dir"] = selected.get("text_recognition_model_dir", ocr_cfg["text_recognition_model_dir"])
+        ocr_cfg["text_rec_input_shape"] = list(selected.get("text_rec_input_shape", ocr_cfg["text_rec_input_shape"]))
+        ocr_cfg["active_model_id"] = target
+
+        self._save_config()
+        self.reload_model()
+
+        return self.get_model_info()
+
     def _build_ocr(self) -> PaddleOCR:
         ocr_cfg = self.cfg["ocr"]
         return PaddleOCR(
@@ -35,6 +127,13 @@ class OCRService:
     def reload_model(self) -> None:
         self.cfg = self._load_config(self.config_path)
         self.ocr = self._build_ocr()
+
+    def get_model_info(self) -> dict[str, Any]:
+        ocr_cfg = self.cfg["ocr"]
+        return {
+            **self._get_current_model_payload(),
+            "active_model_id": ocr_cfg.get("active_model_id", ""),
+        }
 
     def _draw_boxes_only(self, image_path: str, boxes: list, vis_path: str) -> None:
         img = cv2.imread(image_path)

@@ -100,6 +100,7 @@ async def ocr_image(file: UploadFile = File(...)) -> dict:
             "image_url": f"/uploads/{save_name}",
             "vis_url": f"/results/{vis_name}" if result["vis_path"] else None,
             "texts": result["texts"],
+            "model": result.get("model"),
         },
     }
 

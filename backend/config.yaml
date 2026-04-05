@@ -1,33 +1,42 @@
 server:
-  host: "0.0.0.0"
+  host: 0.0.0.0
   port: 8000
-
 ocr:
-  device: "gpu:0"
-  lang: "ch"
-
-  text_detection_model_name: "PP-OCRv5_mobile_det"
-  text_detection_model_dir: "D:/PaddleOCR/deploy_models/det_final_infer"
-
-  text_recognition_model_name: "PP-OCRv5_mobile_rec"
-  text_recognition_model_dir: "D:/PaddleOCR/deploy_models/rec_round6_infer"
-
-  text_rec_input_shape: [3, 48, 320]
-
+  device: gpu:0
+  lang: ch
+  text_detection_model_name: PP-OCRv5_mobile_det
+  text_detection_model_dir: D:\PaddleOCR\inference_model\PP-OCRv5_mobile_det_infer
+  text_recognition_model_name: PP-OCRv5_mobile_rec_paper_fix_infer
+  text_recognition_model_dir: D:\PaddleOCR\deploy_models\rec_paper_fix_infer
+  text_rec_input_shape:
+  - 3
+  - 48
+  - 640
   use_doc_orientation_classify: false
   use_doc_unwarping: false
   use_textline_orientation: false
-
-  active_model_id: "default"
+  active_model_id: alt_rec
   model_presets:
-    - id: "default"
-      label: "PP-OCRv5_mobile 默认微调模型"
-      text_detection_model_name: "PP-OCRv5_mobile_det"
-      text_detection_model_dir: "D:/PaddleOCR/deploy_models/det_final_infer"
-      text_recognition_model_name: "PP-OCRv5_mobile_rec"
-      text_recognition_model_dir: "D:/PaddleOCR/deploy_models/rec_round6_infer"
-      text_rec_input_shape: [3, 48, 320]
-
+  - id: default
+    label: PP-OCRv5_mobile 官方模型
+    text_detection_model_name: PP-OCRv5_mobile_det
+    text_detection_model_dir: D:\PaddleOCR\inference_model\PP-OCRv5_mobile_det_infer
+    text_recognition_model_name: PP-OCRv5_mobile_rec
+    text_recognition_model_dir: D:\PaddleOCR\inference_model\PP-OCRv5_mobile_rec_infer
+    text_rec_input_shape:
+    - 3
+    - 48
+    - 640
+  - id: alt_rec
+    label: PP-OCRv5_mobile 微调模型
+    text_detection_model_name: PP-OCRv5_mobile_det
+    text_detection_model_dir: D:\PaddleOCR\inference_model\PP-OCRv5_mobile_det_infer
+    text_recognition_model_name: PP-OCRv5_mobile_rec_paper_fix_infer
+    text_recognition_model_dir: D:\PaddleOCR\deploy_models\rec_paper_fix_infer
+    text_rec_input_shape:
+    - 3
+    - 48
+    - 640
 paths:
-  upload_dir: "./uploads"
-  result_dir: "./results"
+  upload_dir: ./uploads
+  result_dir: ./results

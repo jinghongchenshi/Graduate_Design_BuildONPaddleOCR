@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import hashlib
 from typing import Any
 import cv2
 import yaml
@@ -35,6 +35,19 @@ class OCRService:
             "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
             "use_textline_orientation": ocr_cfg["use_textline_orientation"],
         }
+
+    def _get_model_fingerprint(self) -> str:
+        payload = self._get_current_model_payload()
+        payload_text = "|".join([
+            str(payload["det_model_name"]),
+            str(payload["det_model_dir"]),
+            str(payload["rec_model_name"]),
+            str(payload["rec_model_dir"]),
+            str(payload["text_rec_input_shape"]),
+            str(payload["device"]),
+            str(payload["lang"]),
+        ])
+        return hashlib.sha1(payload_text.encode("utf-8")).hexdigest()[:12]
 
     def list_model_options(self) -> list[dict[str, Any]]:
         ocr_cfg = self.cfg["ocr"]
@@ -133,6 +146,7 @@ class OCRService:
         return {
             **self._get_current_model_payload(),
             "active_model_id": ocr_cfg.get("active_model_id", ""),
+            "model_fingerprint": self._get_model_fingerprint(),
         }
 
     def _draw_boxes_only(self, image_path: str, boxes: list, vis_path: str) -> None:
@@ -197,4 +211,5 @@ class OCRService:
         return {
             "texts": lines,
             "vis_path": final_vis_path,
+            "model": self.get_model_info(),
         }

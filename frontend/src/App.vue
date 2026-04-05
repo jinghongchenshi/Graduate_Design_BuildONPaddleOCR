@@ -178,6 +178,38 @@
             class="threshold-slider"
           />
         </div>
+        <div class="model-switch-card">
+          <div class="threshold-label">
+            <span>模型切换</span>
+            <strong>{{ modelSwitching ? "切换中" : "可切换" }}</strong>
+          </div>
+          <div class="model-switch-row">
+            <select
+              v-model="selectedModelId"
+              class="model-select"
+              :disabled="loading || modelSwitching || !modelOptions.length"
+            >
+              <option disabled value="">请选择模型</option>
+              <option
+                v-for="option in modelOptions"
+                :key="option.id"
+                :value="option.id"
+              >
+                {{ option.label }}（{{ option.det_model_name }} + {{ option.rec_model_name }}）
+              </option>
+            </select>
+            <button
+              class="secondary model-switch-btn"
+              @click="applyModelSelection"
+              :disabled="loading || modelSwitching || !selectedModelId"
+            >
+              {{ modelSwitching ? "切换中..." : "应用模型" }}
+            </button>
+          </div>
+          <p v-if="modelOptionsLoading" class="model-switch-tip">模型列表加载中...</p>
+          <p v-else-if="modelOptionsError" class="model-switch-tip warning">{{ modelOptionsError }}</p>
+          <p v-else class="model-switch-tip">当前可选模型 {{ modelOptions.length }} 个。</p>
+        </div>
       </div>
     </section>
 
@@ -750,6 +782,7 @@
           <p><strong>检测目录：</strong>{{ currentModel.det_model_dir }}</p>
           <p><strong>识别模型：</strong>{{ currentModel.rec_model_name }}</p>
           <p><strong>识别目录：</strong>{{ currentModel.rec_model_dir }}</p>
+          <p><strong>当前模型 ID：</strong>{{ currentModel.active_model_id || "-" }}</p>
           <p><strong>运行设备：</strong>{{ currentModel.device }}</p>
           <p><strong>语言：</strong>{{ currentModel.lang }}</p>
           <p><strong>识别输入尺寸：</strong>{{ modelShapeText }}</p>
@@ -780,7 +813,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { uploadImage, getModelInfo } from "./api";
+import { uploadImage, getModelInfo, getModelOptions, selectModel } from "./api";
 
 const backendBase = "http://127.0.0.1:8000";
 const LOW_CONFIDENCE_CUTOFF = 0.6;
@@ -809,7 +842,13 @@ const reviewStatusMap = ref({});
 const reviewEditMap = ref({});
 const modelInfoLoading = ref(false);
 const modelInfoError = ref("");
+const modelOptionsLoading = ref(false);
+const modelOptionsError = ref("");
+const modelSwitching = ref(false);
+const modelOptions = ref([]);
+const selectedModelId = ref("");
 const currentModel = ref({
+  active_model_id: "",
   device: "-",
   lang: "-",
   det_model_name: "-",
@@ -996,6 +1035,12 @@ const modelSummaryText = computed(() => {
   return `${det} + ${rec}`;
 });
 
+const selectedModelLabel = computed(() => {
+  if (!selectedModelId.value) return "";
+  const selected = modelOptions.value.find(item => item.id === selectedModelId.value);
+  return selected?.label || selectedModelId.value;
+});
+
 const modelShapeText = computed(() => {
   return currentModel.value.text_rec_input_shape?.length
     ? currentModel.value.text_rec_input_shape.join(" × ")
@@ -1070,6 +1115,7 @@ async function fetchCurrentModelInfo(showLog = false) {
         ...currentModel.value,
         ...res.data.data
       };
+      selectedModelId.value = res.data.data.active_model_id || selectedModelId.value;
 
       if (showLog) {
         addLog(`已同步当前模型：${res.data.data.det_model_name} + ${res.data.data.rec_model_name}`);
@@ -1082,6 +1128,51 @@ async function fetchCurrentModelInfo(showLog = false) {
     modelInfoError.value = "无法连接后端读取模型信息。";
   } finally {
     modelInfoLoading.value = false;
+  }
+}
+
+async function fetchModelOptions() {
+  modelOptionsLoading.value = true;
+  modelOptionsError.value = "";
+
+  try {
+    const res = await getModelOptions();
+    if (res.data?.code === 0 && Array.isArray(res.data?.data)) {
+      modelOptions.value = res.data.data;
+      const active = res.data.data.find(item => item.active);
+      if (active?.id) {
+        selectedModelId.value = active.id;
+      } else if (!selectedModelId.value && res.data.data.length) {
+        selectedModelId.value = res.data.data[0].id;
+      }
+    } else {
+      modelOptionsError.value = "后端未返回有效的模型列表。";
+    }
+  } catch (error) {
+    console.error("读取模型列表失败：", error);
+    modelOptionsError.value = "无法连接后端读取模型列表。";
+  } finally {
+    modelOptionsLoading.value = false;
+  }
+}
+
+async function applyModelSelection() {
+  if (!selectedModelId.value) {
+    addLog("请先选择模型。");
+    return;
+  }
+
+  modelSwitching.value = true;
+  try {
+    await selectModel(selectedModelId.value);
+    await fetchCurrentModelInfo();
+    await fetchModelOptions();
+    addLog(`模型切换成功：${selectedModelLabel.value}`);
+  } catch (error) {
+    console.error("模型切换失败：", error);
+    addLog(error?.response?.data?.detail || "模型切换失败，请检查后端日志。");
+  } finally {
+    modelSwitching.value = false;
   }
 }
 
@@ -2181,6 +2272,7 @@ onMounted(() => {
   window.addEventListener("keydown", handleKeydown);
 
   fetchCurrentModelInfo();
+  fetchModelOptions();
   modelInfoTimer = window.setInterval(() => {
     fetchCurrentModelInfo();
   }, MODEL_INFO_REFRESH_MS);
@@ -2486,6 +2578,8 @@ onBeforeUnmount(() => {
 .right-controls {
   display: flex;
   justify-content: flex-end;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .threshold-card {
@@ -2508,6 +2602,45 @@ onBeforeUnmount(() => {
 .threshold-slider {
   width: 100%;
   cursor: pointer;
+}
+
+.model-switch-card {
+  width: 100%;
+  min-width: 360px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+  border: 1px solid rgba(191, 219, 254, 0.85);
+}
+
+.model-switch-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.model-select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(191, 219, 254, 0.95);
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+}
+
+.model-switch-btn {
+  white-space: nowrap;
+}
+
+.model-switch-tip {
+  margin: 8px 0 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.model-switch-tip.warning {
+  color: #b91c1c;
 }
 
 .file-btn {

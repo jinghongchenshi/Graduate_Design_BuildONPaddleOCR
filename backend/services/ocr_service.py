@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 import cv2
 import yaml
@@ -11,6 +12,7 @@ class OCRService:
     def __init__(self, config_path: str) -> None:
         self.config_path = config_path
         self.cfg = self._load_config(config_path)
+        self._apply_active_preset()
         self.ocr = self._build_ocr()
 
     def _load_config(self, config_path: str) -> dict[str, Any]:
@@ -20,6 +22,29 @@ class OCRService:
     def _save_config(self) -> None:
         with open(self.config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+
+    def _apply_active_preset(self) -> None:
+        ocr_cfg = self.cfg.get("ocr", {})
+        presets = ocr_cfg.get("model_presets", [])
+        active_model_id = str(ocr_cfg.get("active_model_id") or "").strip()
+
+        if not active_model_id or not isinstance(presets, list):
+            return
+
+        selected = None
+        for item in presets:
+            if isinstance(item, dict) and str(item.get("id") or "").strip() == active_model_id:
+                selected = item
+                break
+
+        if selected is None:
+            return
+
+        ocr_cfg["text_detection_model_name"] = selected.get("text_detection_model_name", ocr_cfg["text_detection_model_name"])
+        ocr_cfg["text_detection_model_dir"] = selected.get("text_detection_model_dir", ocr_cfg["text_detection_model_dir"])
+        ocr_cfg["text_recognition_model_name"] = selected.get("text_recognition_model_name", ocr_cfg["text_recognition_model_name"])
+        ocr_cfg["text_recognition_model_dir"] = selected.get("text_recognition_model_dir", ocr_cfg["text_recognition_model_dir"])
+        ocr_cfg["text_rec_input_shape"] = list(selected.get("text_rec_input_shape", ocr_cfg["text_rec_input_shape"]))
 
     def _get_current_model_payload(self) -> dict[str, Any]:
         ocr_cfg = self.cfg["ocr"]
@@ -35,6 +60,19 @@ class OCRService:
             "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
             "use_textline_orientation": ocr_cfg["use_textline_orientation"],
         }
+
+    def _get_model_fingerprint(self) -> str:
+        payload = self._get_current_model_payload()
+        payload_text = "|".join([
+            str(payload["det_model_name"]),
+            str(payload["det_model_dir"]),
+            str(payload["rec_model_name"]),
+            str(payload["rec_model_dir"]),
+            str(payload["text_rec_input_shape"]),
+            str(payload["device"]),
+            str(payload["lang"]),
+        ])
+        return hashlib.sha1(payload_text.encode("utf-8")).hexdigest()[:12]
 
     def list_model_options(self) -> list[dict[str, Any]]:
         ocr_cfg = self.cfg["ocr"]
@@ -126,6 +164,7 @@ class OCRService:
 
     def reload_model(self) -> None:
         self.cfg = self._load_config(self.config_path)
+        self._apply_active_preset()
         self.ocr = self._build_ocr()
 
     def get_model_info(self) -> dict[str, Any]:
@@ -133,6 +172,7 @@ class OCRService:
         return {
             **self._get_current_model_payload(),
             "active_model_id": ocr_cfg.get("active_model_id", ""),
+            "model_fingerprint": self._get_model_fingerprint(),
         }
 
     def _draw_boxes_only(self, image_path: str, boxes: list, vis_path: str) -> None:
@@ -197,4 +237,5 @@ class OCRService:
         return {
             "texts": lines,
             "vis_path": final_vis_path,
+            "model": self.get_model_info(),
         }

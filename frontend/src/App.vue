@@ -209,6 +209,7 @@
           <p v-if="modelOptionsLoading" class="model-switch-tip">模型列表加载中...</p>
           <p v-else-if="modelOptionsError" class="model-switch-tip warning">{{ modelOptionsError }}</p>
           <p v-else class="model-switch-tip">当前可选模型 {{ modelOptions.length }} 个。</p>
+          <p v-if="lastInferenceModel" class="model-switch-tip">最近识别模型：{{ lastInferenceModel }}</p>
         </div>
       </div>
     </section>
@@ -783,6 +784,7 @@
           <p><strong>识别模型：</strong>{{ currentModel.rec_model_name }}</p>
           <p><strong>识别目录：</strong>{{ currentModel.rec_model_dir }}</p>
           <p><strong>当前模型 ID：</strong>{{ currentModel.active_model_id || "-" }}</p>
+          <p><strong>模型指纹：</strong>{{ currentModel.model_fingerprint || "-" }}</p>
           <p><strong>运行设备：</strong>{{ currentModel.device }}</p>
           <p><strong>语言：</strong>{{ currentModel.lang }}</p>
           <p><strong>识别输入尺寸：</strong>{{ modelShapeText }}</p>
@@ -847,8 +849,10 @@ const modelOptionsError = ref("");
 const modelSwitching = ref(false);
 const modelOptions = ref([]);
 const selectedModelId = ref("");
+const lastInferenceModel = ref("");
 const currentModel = ref({
   active_model_id: "",
+  model_fingerprint: "",
   device: "-",
   lang: "-",
   det_model_name: "-",
@@ -1433,6 +1437,15 @@ async function startOCR() {
     const data = res.data.data;
     visUrl.value = data.vis_url;
     texts.value = data.texts || [];
+    if (data?.model) {
+      const inferModel = data.model;
+      lastInferenceModel.value = `${inferModel.active_model_id || "-"} / ${inferModel.model_fingerprint || "-"}`;
+      addLog(`本次识别模型：${lastInferenceModel.value}`);
+      currentModel.value = {
+        ...currentModel.value,
+        ...inferModel
+      };
+    }
     elapsedMs.value = performance.now() - start;
     uploadPercent.value = 100;
     focusedResultIndex.value = null;

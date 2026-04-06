@@ -780,9 +780,11 @@
       <template v-else-if="activeTab === 'model'">
         <div class="model-desc">
           <p><strong>当前模型名称：</strong>{{ currentModel.active_model_label || "-" }}</p>
-          <p><strong>检测模型：</strong>{{ currentModel.det_model_display_name || currentModel.det_model_name }}</p>
+          <p><strong>检测模型（运行时）：</strong>{{ currentModel.det_model_runtime_name || currentModel.det_model_display_name || currentModel.det_model_name }}</p>
+          <p><strong>检测模型（配置值）：</strong>{{ currentModel.det_model_name }}</p>
           <p><strong>检测目录：</strong>{{ currentModel.det_model_dir }}</p>
-          <p><strong>识别模型：</strong>{{ currentModel.rec_model_display_name || currentModel.rec_model_name }}</p>
+          <p><strong>识别模型（运行时）：</strong>{{ currentModel.rec_model_runtime_name || currentModel.rec_model_display_name || currentModel.rec_model_name }}</p>
+          <p><strong>识别模型（配置值）：</strong>{{ currentModel.rec_model_name }}</p>
           <p><strong>识别目录：</strong>{{ currentModel.rec_model_dir }}</p>
           <p><strong>当前模型 ID：</strong>{{ currentModel.active_model_id || "-" }}</p>
           <p><strong>模型指纹：</strong>{{ currentModel.model_fingerprint || "-" }}</p>
@@ -858,9 +860,11 @@ const currentModel = ref({
   device: "-",
   lang: "-",
   det_model_name: "-",
+  det_model_runtime_name: "-",
   det_model_display_name: "-",
   det_model_dir: "-",
   rec_model_name: "-",
+  rec_model_runtime_name: "-",
   rec_model_display_name: "-",
   rec_model_dir: "-",
   text_rec_input_shape: [],

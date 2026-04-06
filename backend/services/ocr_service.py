@@ -40,6 +40,45 @@ class OCRService:
 
         return f"{name} ({folder})"
 
+    @staticmethod
+    def _read_model_name_from_dir(model_dir: str) -> str:
+        if not model_dir:
+            return ""
+
+        model_path = Path(model_dir)
+        if not model_path.exists():
+            return ""
+
+        candidates = [
+            model_path / "inference.yml",
+            model_path / "inference.yaml",
+            model_path / "config.yml",
+            model_path / "config.yaml",
+        ]
+
+        for cfg_file in candidates:
+            if not cfg_file.exists():
+                continue
+
+            try:
+                with open(cfg_file, "r", encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+            except Exception:
+                continue
+
+            if isinstance(cfg, dict):
+                global_cfg = cfg.get("Global")
+                if isinstance(global_cfg, dict):
+                    value = str(global_cfg.get("model_name") or "").strip()
+                    if value:
+                        return value
+
+                value = str(cfg.get("model_name") or "").strip()
+                if value:
+                    return value
+
+        return ""
+
     def _apply_active_preset(self) -> None:
         ocr_cfg = self.cfg.get("ocr", {})
         presets = ocr_cfg.get("model_presets", [])
@@ -69,16 +108,20 @@ class OCRService:
         det_dir = ocr_cfg["text_detection_model_dir"]
         rec_name = ocr_cfg["text_recognition_model_name"]
         rec_dir = ocr_cfg["text_recognition_model_dir"]
+        det_runtime_name = self._read_model_name_from_dir(det_dir) or det_name
+        rec_runtime_name = self._read_model_name_from_dir(rec_dir) or rec_name
 
         return {
             "device": ocr_cfg["device"],
             "lang": ocr_cfg["lang"],
             "det_model_name": det_name,
             "det_model_dir": det_dir,
-            "det_model_display_name": self._build_model_display_name(det_name, det_dir),
+            "det_model_runtime_name": det_runtime_name,
+            "det_model_display_name": self._build_model_display_name(det_runtime_name, det_dir),
             "rec_model_name": rec_name,
             "rec_model_dir": rec_dir,
-            "rec_model_display_name": self._build_model_display_name(rec_name, rec_dir),
+            "rec_model_runtime_name": rec_runtime_name,
+            "rec_model_display_name": self._build_model_display_name(rec_runtime_name, rec_dir),
             "text_rec_input_shape": list(ocr_cfg["text_rec_input_shape"]),
             "use_doc_orientation_classify": ocr_cfg["use_doc_orientation_classify"],
             "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
@@ -131,16 +174,20 @@ class OCRService:
             det_dir = item.get("text_detection_model_dir", "")
             rec_name = item.get("text_recognition_model_name", "")
             rec_dir = item.get("text_recognition_model_dir", "")
+            det_runtime_name = self._read_model_name_from_dir(det_dir) or det_name
+            rec_runtime_name = self._read_model_name_from_dir(rec_dir) or rec_name
 
             result.append({
                 "id": model_id,
                 "label": str(item.get("label") or model_id),
                 "det_model_name": det_name,
                 "det_model_dir": det_dir,
-                "det_model_display_name": self._build_model_display_name(det_name, det_dir),
+                "det_model_runtime_name": det_runtime_name,
+                "det_model_display_name": self._build_model_display_name(det_runtime_name, det_dir),
                 "rec_model_name": rec_name,
                 "rec_model_dir": rec_dir,
-                "rec_model_display_name": self._build_model_display_name(rec_name, rec_dir),
+                "rec_model_runtime_name": rec_runtime_name,
+                "rec_model_display_name": self._build_model_display_name(rec_runtime_name, rec_dir),
                 "text_rec_input_shape": list(item.get("text_rec_input_shape", [])),
                 "active": model_id == active_model_id,
             })

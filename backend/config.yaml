@@ -24,8 +24,10 @@ ocr:
       label: "PP-OCRv5_mobile 默认微调模型"
       text_detection_model_name: "PP-OCRv5_mobile_det"
       text_detection_model_dir: "D:/PaddleOCR/deploy_models/det_final_infer"
+      text_detection_display_name: "官方检测模型"
       text_recognition_model_name: "PP-OCRv5_mobile_rec"
       text_recognition_model_dir: "D:/PaddleOCR/deploy_models/rec_round6_infer"
+      text_recognition_display_name: "官方识别模型"
       text_rec_input_shape: [3, 48, 320]
 
 paths:

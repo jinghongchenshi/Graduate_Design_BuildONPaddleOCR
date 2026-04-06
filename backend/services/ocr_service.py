@@ -102,14 +102,31 @@ class OCRService:
         ocr_cfg["text_recognition_model_dir"] = selected.get("text_recognition_model_dir", ocr_cfg["text_recognition_model_dir"])
         ocr_cfg["text_rec_input_shape"] = list(selected.get("text_rec_input_shape", ocr_cfg["text_rec_input_shape"]))
 
+    def _get_active_preset(self) -> dict[str, Any] | None:
+        ocr_cfg = self.cfg.get("ocr", {})
+        presets = ocr_cfg.get("model_presets", [])
+        active_model_id = str(ocr_cfg.get("active_model_id") or "").strip()
+
+        if not active_model_id or not isinstance(presets, list):
+            return None
+
+        for item in presets:
+            if isinstance(item, dict) and str(item.get("id") or "").strip() == active_model_id:
+                return item
+
+        return None
+
     def _get_current_model_payload(self) -> dict[str, Any]:
         ocr_cfg = self.cfg["ocr"]
+        active_preset = self._get_active_preset() or {}
         det_name = ocr_cfg["text_detection_model_name"]
         det_dir = ocr_cfg["text_detection_model_dir"]
         rec_name = ocr_cfg["text_recognition_model_name"]
         rec_dir = ocr_cfg["text_recognition_model_dir"]
         det_runtime_name = self._read_model_name_from_dir(det_dir) or det_name
         rec_runtime_name = self._read_model_name_from_dir(rec_dir) or rec_name
+        det_display_seed = str(active_preset.get("text_detection_display_name") or det_runtime_name)
+        rec_display_seed = str(active_preset.get("text_recognition_display_name") or rec_runtime_name)
 
         return {
             "device": ocr_cfg["device"],
@@ -117,11 +134,11 @@ class OCRService:
             "det_model_name": det_name,
             "det_model_dir": det_dir,
             "det_model_runtime_name": det_runtime_name,
-            "det_model_display_name": self._build_model_display_name(det_runtime_name, det_dir),
+            "det_model_display_name": self._build_model_display_name(det_display_seed, det_dir),
             "rec_model_name": rec_name,
             "rec_model_dir": rec_dir,
             "rec_model_runtime_name": rec_runtime_name,
-            "rec_model_display_name": self._build_model_display_name(rec_runtime_name, rec_dir),
+            "rec_model_display_name": self._build_model_display_name(rec_display_seed, rec_dir),
             "text_rec_input_shape": list(ocr_cfg["text_rec_input_shape"]),
             "use_doc_orientation_classify": ocr_cfg["use_doc_orientation_classify"],
             "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
@@ -176,6 +193,8 @@ class OCRService:
             rec_dir = item.get("text_recognition_model_dir", "")
             det_runtime_name = self._read_model_name_from_dir(det_dir) or det_name
             rec_runtime_name = self._read_model_name_from_dir(rec_dir) or rec_name
+            det_display_seed = str(item.get("text_detection_display_name") or det_runtime_name)
+            rec_display_seed = str(item.get("text_recognition_display_name") or rec_runtime_name)
 
             result.append({
                 "id": model_id,
@@ -183,11 +202,11 @@ class OCRService:
                 "det_model_name": det_name,
                 "det_model_dir": det_dir,
                 "det_model_runtime_name": det_runtime_name,
-                "det_model_display_name": self._build_model_display_name(det_runtime_name, det_dir),
+                "det_model_display_name": self._build_model_display_name(det_display_seed, det_dir),
                 "rec_model_name": rec_name,
                 "rec_model_dir": rec_dir,
                 "rec_model_runtime_name": rec_runtime_name,
-                "rec_model_display_name": self._build_model_display_name(rec_runtime_name, rec_dir),
+                "rec_model_display_name": self._build_model_display_name(rec_display_seed, rec_dir),
                 "text_rec_input_shape": list(item.get("text_rec_input_shape", [])),
                 "active": model_id == active_model_id,
             })

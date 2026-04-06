@@ -195,7 +195,7 @@
                 :key="option.id"
                 :value="option.id"
               >
-                {{ option.label }}（{{ option.det_model_name }} + {{ option.rec_model_name }}）
+                {{ option.label }}（{{ formatModelDisplayName(option.det_model_name, option.det_model_dir) }} + {{ formatModelDisplayName(option.rec_model_name, option.rec_model_dir) }}）
               </option>
             </select>
             <button
@@ -778,9 +778,9 @@
       <!-- 模型说明 -->
       <template v-else-if="activeTab === 'model'">
         <div class="model-desc">
-          <p><strong>检测模型：</strong>{{ currentModel.det_model_name }}</p>
+          <p><strong>检测模型：</strong>{{ formatModelDisplayName(currentModel.det_model_name, currentModel.det_model_dir) }}</p>
           <p><strong>检测目录：</strong>{{ currentModel.det_model_dir }}</p>
-          <p><strong>识别模型：</strong>{{ currentModel.rec_model_name }}</p>
+          <p><strong>识别模型：</strong>{{ formatModelDisplayName(currentModel.rec_model_name, currentModel.rec_model_dir) }}</p>
           <p><strong>识别目录：</strong>{{ currentModel.rec_model_dir }}</p>
           <p><strong>当前模型 ID：</strong>{{ currentModel.active_model_id || "-" }}</p>
           <p><strong>运行设备：</strong>{{ currentModel.device }}</p>
@@ -1020,9 +1020,24 @@ const mergedText = computed(() => {
   return filteredTexts.value.map(item => getFinalText(item._textIndex, item.text)).join("\n");
 });
 
+function getModelAliasByDir(modelDir) {
+  const normalized = String(modelDir || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "");
+  if (!normalized) return "";
+  const segments = normalized.split("/").filter(Boolean);
+  return segments.length ? segments[segments.length - 1] : "";
+}
+
+function formatModelDisplayName(modelName, modelDir) {
+  const alias = getModelAliasByDir(modelDir);
+  if (alias) return alias;
+  return modelName || "-";
+}
+
 const modelSummaryText = computed(() => {
-  const det = currentModel.value.det_model_name || currentModel.value.det_model_dir || "-";
-  const rec = currentModel.value.rec_model_name || currentModel.value.rec_model_dir || "-";
+  const det = formatModelDisplayName(currentModel.value.det_model_name, currentModel.value.det_model_dir);
+  const rec = formatModelDisplayName(currentModel.value.rec_model_name, currentModel.value.rec_model_dir);
 
   if (modelInfoLoading.value) {
     return "模型信息同步中...";

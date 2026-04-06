@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import Any
 import cv2
 import yaml
@@ -22,6 +23,22 @@ class OCRService:
     def _save_config(self) -> None:
         with open(self.config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(self.cfg, f, allow_unicode=True, sort_keys=False)
+
+    @staticmethod
+    def _build_model_display_name(model_name: str, model_dir: str) -> str:
+        name = str(model_name or "").strip()
+        folder = Path(str(model_dir or "").replace("\\", "/")).name.strip()
+
+        if not folder:
+            return name or "-"
+
+        if not name:
+            return folder
+
+        if folder in name:
+            return name
+
+        return f"{name} ({folder})"
 
     def _apply_active_preset(self) -> None:
         ocr_cfg = self.cfg.get("ocr", {})
@@ -48,13 +65,20 @@ class OCRService:
 
     def _get_current_model_payload(self) -> dict[str, Any]:
         ocr_cfg = self.cfg["ocr"]
+        det_name = ocr_cfg["text_detection_model_name"]
+        det_dir = ocr_cfg["text_detection_model_dir"]
+        rec_name = ocr_cfg["text_recognition_model_name"]
+        rec_dir = ocr_cfg["text_recognition_model_dir"]
+
         return {
             "device": ocr_cfg["device"],
             "lang": ocr_cfg["lang"],
-            "det_model_name": ocr_cfg["text_detection_model_name"],
-            "det_model_dir": ocr_cfg["text_detection_model_dir"],
-            "rec_model_name": ocr_cfg["text_recognition_model_name"],
-            "rec_model_dir": ocr_cfg["text_recognition_model_dir"],
+            "det_model_name": det_name,
+            "det_model_dir": det_dir,
+            "det_model_display_name": self._build_model_display_name(det_name, det_dir),
+            "rec_model_name": rec_name,
+            "rec_model_dir": rec_dir,
+            "rec_model_display_name": self._build_model_display_name(rec_name, rec_dir),
             "text_rec_input_shape": list(ocr_cfg["text_rec_input_shape"]),
             "use_doc_orientation_classify": ocr_cfg["use_doc_orientation_classify"],
             "use_doc_unwarping": ocr_cfg["use_doc_unwarping"],
@@ -86,8 +110,10 @@ class OCRService:
                 "label": "当前配置模型",
                 "det_model_name": current["det_model_name"],
                 "det_model_dir": current["det_model_dir"],
+                "det_model_display_name": current["det_model_display_name"],
                 "rec_model_name": current["rec_model_name"],
                 "rec_model_dir": current["rec_model_dir"],
+                "rec_model_display_name": current["rec_model_display_name"],
                 "text_rec_input_shape": current["text_rec_input_shape"],
                 "active": True,
             }]
@@ -101,13 +127,20 @@ class OCRService:
             if not model_id:
                 continue
 
+            det_name = item.get("text_detection_model_name", "")
+            det_dir = item.get("text_detection_model_dir", "")
+            rec_name = item.get("text_recognition_model_name", "")
+            rec_dir = item.get("text_recognition_model_dir", "")
+
             result.append({
                 "id": model_id,
                 "label": str(item.get("label") or model_id),
-                "det_model_name": item.get("text_detection_model_name", ""),
-                "det_model_dir": item.get("text_detection_model_dir", ""),
-                "rec_model_name": item.get("text_recognition_model_name", ""),
-                "rec_model_dir": item.get("text_recognition_model_dir", ""),
+                "det_model_name": det_name,
+                "det_model_dir": det_dir,
+                "det_model_display_name": self._build_model_display_name(det_name, det_dir),
+                "rec_model_name": rec_name,
+                "rec_model_dir": rec_dir,
+                "rec_model_display_name": self._build_model_display_name(rec_name, rec_dir),
                 "text_rec_input_shape": list(item.get("text_rec_input_shape", [])),
                 "active": model_id == active_model_id,
             })

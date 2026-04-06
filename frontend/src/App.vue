@@ -195,7 +195,7 @@
                 :key="option.id"
                 :value="option.id"
               >
-                {{ option.label }}（{{ option.det_model_name }} + {{ option.rec_model_name }}）
+                {{ option.label }}（{{ option.det_model_display_name || option.det_model_name }} + {{ option.rec_model_display_name || option.rec_model_name }}）
               </option>
             </select>
             <button
@@ -779,9 +779,10 @@
       <!-- 模型说明 -->
       <template v-else-if="activeTab === 'model'">
         <div class="model-desc">
-          <p><strong>检测模型：</strong>{{ currentModel.det_model_name }}</p>
+          <p><strong>当前模型名称：</strong>{{ currentModel.active_model_label || "-" }}</p>
+          <p><strong>检测模型：</strong>{{ currentModel.det_model_display_name || currentModel.det_model_name }}</p>
           <p><strong>检测目录：</strong>{{ currentModel.det_model_dir }}</p>
-          <p><strong>识别模型：</strong>{{ currentModel.rec_model_name }}</p>
+          <p><strong>识别模型：</strong>{{ currentModel.rec_model_display_name || currentModel.rec_model_name }}</p>
           <p><strong>识别目录：</strong>{{ currentModel.rec_model_dir }}</p>
           <p><strong>当前模型 ID：</strong>{{ currentModel.active_model_id || "-" }}</p>
           <p><strong>模型指纹：</strong>{{ currentModel.model_fingerprint || "-" }}</p>
@@ -852,12 +853,15 @@ const selectedModelId = ref("");
 const lastInferenceModel = ref("");
 const currentModel = ref({
   active_model_id: "",
+  active_model_label: "",
   model_fingerprint: "",
   device: "-",
   lang: "-",
   det_model_name: "-",
+  det_model_display_name: "-",
   det_model_dir: "-",
   rec_model_name: "-",
+  rec_model_display_name: "-",
   rec_model_dir: "-",
   text_rec_input_shape: [],
   use_doc_orientation_classify: false,
@@ -1025,8 +1029,10 @@ const mergedText = computed(() => {
 });
 
 const modelSummaryText = computed(() => {
-  const det = currentModel.value.det_model_name || currentModel.value.det_model_dir || "-";
-  const rec = currentModel.value.rec_model_name || currentModel.value.rec_model_dir || "-";
+  const displayName = currentModel.value.active_model_label || selectedModelLabel.value || "";
+  const modelId = currentModel.value.active_model_id || "";
+  const det = currentModel.value.det_model_display_name || currentModel.value.det_model_name || currentModel.value.det_model_dir || "-";
+  const rec = currentModel.value.rec_model_display_name || currentModel.value.rec_model_name || currentModel.value.rec_model_dir || "-";
 
   if (modelInfoLoading.value) {
     return "模型信息同步中...";
@@ -1034,6 +1040,10 @@ const modelSummaryText = computed(() => {
 
   if (modelInfoError.value) {
     return "模型信息读取失败";
+  }
+
+  if (displayName) {
+    return `${displayName}${modelId ? `（${modelId}）` : ""}`;
   }
 
   return `${det} + ${rec}`;
@@ -1122,7 +1132,8 @@ async function fetchCurrentModelInfo(showLog = false) {
       selectedModelId.value = res.data.data.active_model_id || selectedModelId.value;
 
       if (showLog) {
-        addLog(`已同步当前模型：${res.data.data.det_model_name} + ${res.data.data.rec_model_name}`);
+        const label = res.data.data.active_model_label || res.data.data.active_model_id || "-";
+        addLog(`已同步当前模型：${label}`);
       }
     } else {
       modelInfoError.value = "后端未返回有效的模型信息。";
@@ -1168,10 +1179,11 @@ async function applyModelSelection() {
 
   modelSwitching.value = true;
   try {
-    await selectModel(selectedModelId.value);
+    const response = await selectModel(selectedModelId.value);
     await fetchCurrentModelInfo();
     await fetchModelOptions();
-    addLog(`模型切换成功：${selectedModelLabel.value}`);
+    const currentLabel = response?.data?.data?.active_model_label || selectedModelLabel.value;
+    addLog(`模型切换成功：${currentLabel}`);
   } catch (error) {
     console.error("模型切换失败：", error);
     addLog(error?.response?.data?.detail || "模型切换失败，请检查后端日志。");
@@ -1439,7 +1451,8 @@ async function startOCR() {
     texts.value = data.texts || [];
     if (data?.model) {
       const inferModel = data.model;
-      lastInferenceModel.value = `${inferModel.active_model_id || "-"} / ${inferModel.model_fingerprint || "-"}`;
+      const inferLabel = inferModel.active_model_label || inferModel.active_model_id || "-";
+      lastInferenceModel.value = `${inferLabel} / ${inferModel.model_fingerprint || "-"}`;
       addLog(`本次识别模型：${lastInferenceModel.value}`);
       currentModel.value = {
         ...currentModel.value,
